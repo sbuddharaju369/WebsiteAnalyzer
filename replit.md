@@ -124,6 +124,7 @@ The application follows a modular architecture with clear separation of concerns
 - **Analytics Improvements**: Content analytics charts now display side-by-side for better space utilization
 - **Network Visualization**: Redesigned relationship graph with cleaner node layout, semantic color coding, and reduced clutter (limited to 15 nodes)
 - **Cache Management**: Cache files now display with human-readable timestamps (e.g., "verizon.com - June 15, 2025 at 5:26 PM (47 pages)")
+- **Interactive Progress Bar**: Real-time crawling progress with live metrics, performance charts, current page display, and ETA calculations
 
 ### User Experience Improvements
 - **Confidence Scoring**: Replaced technical percentages with intuitive reliability indicators (Very Reliable, Mostly Reliable, etc.)
