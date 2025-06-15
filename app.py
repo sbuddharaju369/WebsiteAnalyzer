@@ -203,6 +203,7 @@ def main():
         # Vector database search functionality
         if st.session_state.rag_engine:
             st.markdown("### 🔍 Vector Search (ChromaDB)")
+            st.info("💡 **About Similarity Scores**: Scores show how closely each plan matches your search. Higher scores (closer to 1.0) mean better matches. Scores around 0.7+ are very relevant, 0.5-0.7 are somewhat relevant.")
             search_term = st.text_input("Semantic search:", placeholder="e.g., unlimited data plans with streaming")
             category_filter = st.selectbox("Filter by category:", 
                                          ["all", "mobile", "internet", "prepaid", "bundles"])
@@ -413,16 +414,18 @@ def main():
             st.markdown("### 🔍 Vector Search Results")
             for i, result in enumerate(st.session_state.vector_search_results[:5], 1):
                 similarity = result.get('similarity_score', 0)
-                with st.expander(f"{i}. {result.get('title', 'Untitled')} (Score: {similarity:.3f})"):
-                    st.write(f"**Category:** {result.get('category', 'Unknown')}")
-                    if result.get('price'):
-                        st.write(f"**Price:** {result['price']}")
-                    if result.get('features'):
-                        features_str = ', '.join(result['features'][:3]) if isinstance(result['features'], list) else str(result['features'])
-                        st.write(f"**Features:** {features_str}")
+                metadata = result.get('metadata', {})
+                title = metadata.get('title', 'Untitled') if metadata else result.get('title', 'Untitled')
+                category = metadata.get('category', 'Unknown') if metadata else result.get('category', 'Unknown')
+                price = metadata.get('price', 'N/A') if metadata else result.get('price', 'N/A')
+                
+                with st.expander(f"{i}. {title} (Score: {similarity:.3f})"):
+                    st.write(f"**Category:** {category}")
+                    if price and price != 'N/A':
+                        st.write(f"**Price:** {price}")
                     if result.get('content'):
                         st.write(f"**Content:** {result['content'][:200]}...")
-                    st.write(f"**Similarity Score:** {similarity:.3f}")
+                    st.write(f"**Similarity Score:** {similarity:.3f} (higher = more relevant)")
     
     # Display PostgreSQL search results if available
     if hasattr(st.session_state, 'db_search_results') and st.session_state.db_search_results:

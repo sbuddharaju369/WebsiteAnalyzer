@@ -127,9 +127,9 @@ class ChromaRAGEngine:
                     
                     # Simple metadata
                     metadata = {
-                        'title': title[:100] if title else '',
-                        'category': category[:50] if category else '',
-                        'price': price[:50] if price else '',
+                        'title': title[:100] if title else 'No Title',
+                        'category': category[:50] if category else 'No Category',
+                        'price': price[:50] if price else 'No Price',
                         'doc_index': str(doc_idx)
                     }
                     
@@ -182,11 +182,15 @@ class ChromaRAGEngine:
             if results and results.get('ids') and results['ids'][0]:
                 for i in range(len(results['ids'][0])):
                     try:
+                        metadata = results['metadatas'][0][i] if results.get('metadatas') else {}
                         result = {
                             'id': results['ids'][0][i],
                             'content': results['documents'][0][i],
-                            'metadata': results['metadatas'][0][i],
-                            'similarity_score': 1.0 - results['distances'][0][i] if results.get('distances') else 0.5
+                            'metadata': metadata,
+                            'similarity_score': 1.0 - results['distances'][0][i] if results.get('distances') else 0.5,
+                            'title': metadata.get('title', 'Untitled'),
+                            'category': metadata.get('category', 'Unknown'),
+                            'price': metadata.get('price', 'N/A')
                         }
                         formatted_results.append(result)
                     except Exception as e:
