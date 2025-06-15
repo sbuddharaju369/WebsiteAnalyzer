@@ -109,10 +109,11 @@ The application follows a modular architecture with clear separation of concerns
 
 ## Changelog
 
-- June 15, 2025: Initial setup with basic RAG functionality
+- June 15, 2025: Initial setup with basic RAG functionality using FAISS
 - June 15, 2025: Added PostgreSQL database integration with comprehensive data persistence
 - June 15, 2025: Implemented accuracy testing framework for response validation
 - June 15, 2025: Added database search, query history, and performance tracking features
+- June 15, 2025: Migrated from FAISS to ChromaDB for enhanced vector database capabilities
 
 ## User Preferences
 
