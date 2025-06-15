@@ -1,75 +1,70 @@
-# Verizon Plan Assistant
+# Web Content Analyzer
 
 ## Overview
 
-This is a Streamlit-based web application that serves as an intelligent assistant for Verizon telecommunications plans. The application uses web scraping to gather current plan information from Verizon's website and implements a Retrieval-Augmented Generation (RAG) system powered by OpenAI's GPT models to provide intelligent responses to user queries about Verizon plans.
+This is a comprehensive Streamlit-based web application that transforms any publicly accessible website into intelligent, searchable knowledge using AI-powered content analysis. The application crawls websites, extracts clean content, creates semantic embeddings, and provides RAG-powered insights and question-answering capabilities.
 
 ## System Architecture
 
 The application follows a modular architecture with clear separation of concerns:
 
-1. **Frontend**: Streamlit-based web interface for user interaction
-2. **Data Collection**: Web scraping module for gathering plan information
-3. **AI/RAG Engine**: OpenAI-powered question-answering system with vector search
-4. **Data Storage**: PostgreSQL database with file-based JSON backup
-5. **Testing Framework**: Accuracy verification and response validation system
+1. **Frontend**: Streamlit-based web interface with advanced analytics
+2. **Web Crawling**: Intelligent website crawling and content extraction
+3. **AI/RAG Engine**: OpenAI-powered content analysis with vector search
+4. **Data Storage**: ChromaDB vector database with local JSON caching
+5. **Visualization**: Interactive charts and network graphs
 6. **Deployment**: Configured for Replit's autoscale deployment
 
 ## Key Components
 
-### 1. Web Scraping (`scraper.py`)
-- **Purpose**: Extracts current plan information from Verizon's website
+### 1. Web Crawler (`web_crawler.py`)
+- **Purpose**: Intelligently crawls and extracts content from any website
 - **Technology**: Beautiful Soup, Trafilatura, Requests
 - **Features**: 
-  - Rate-limited requests to respect website policies
-  - Multiple plan categories (mobile, internet, prepaid, bundles)
-  - Content extraction and cleaning
-- **Architecture Decision**: Chose trafilatura for robust content extraction over basic BeautifulSoup parsing to handle dynamic content better
+  - Respects robots.txt and implements rate limiting
+  - Domain-scoped crawling to stay within target site
+  - Content filtering to skip non-text files
+  - Metadata extraction (titles, descriptions, headings)
+  - Local JSON caching with timestamps
+- **Architecture Decision**: Uses trafilatura for clean content extraction and implements smart URL filtering
 
-### 2. RAG Engine (`chroma_engine.py`)
-- **Purpose**: Provides intelligent question-answering using scraped data
-- **Technology**: OpenAI GPT models, ChromaDB vector database, text embeddings
+### 2. Web RAG Engine (`web_rag_engine.py`)
+- **Purpose**: Processes web content for intelligent question-answering
+- **Technology**: OpenAI GPT-4o, ChromaDB vector database, tiktoken
 - **Features**:
-  - Text chunking with overlap for better context preservation
-  - Semantic similarity search with metadata filtering
-  - Persistent vector storage with query history
-  - Advanced filtering by category and content
-- **Architecture Decision**: Migrated from FAISS to ChromaDB for better metadata handling, persistence, and filtering capabilities
+  - Smart text chunking based on semantic boundaries
+  - Token-aware processing for optimal embedding
+  - Persistent vector storage with rich metadata
+  - Confidence scoring and source attribution
+  - Context-aware analysis with domain insights
+- **Architecture Decision**: Persistent ChromaDB for reliability with intelligent chunking strategy
 
-### 3. Streamlit Frontend (`app.py`)
-- **Purpose**: User interface for interacting with the system
+### 3. Enhanced Streamlit Frontend (`app.py`)
+- **Purpose**: Comprehensive web interface for content analysis
 - **Features**:
-  - Real-time data scraping capabilities
-  - Interactive chat interface
-  - Session state management
-  - Data freshness indicators
-- **Architecture Decision**: Chose Streamlit for rapid prototyping and built-in session management over more complex frameworks
+  - Interactive crawling controls with progress tracking
+  - AI-powered question answering with suggested queries
+  - Visual analytics with charts and network graphs
+  - Cache management and content browsing
+  - Semantic search across all content
+- **Architecture Decision**: Wide layout with tabbed interface for rich user experience
 
-### 4. Database Layer (`database_simple.py`)
-- **Purpose**: PostgreSQL database operations for persistent storage
-- **Technology**: PostgreSQL, psycopg2
+### 4. Data Visualization
+- **Technology**: Plotly, Streamlit-agraph, Pandas
 - **Features**:
-  - Plan data storage with full metadata
-  - Query history tracking with performance metrics
-  - Scraping session management
-  - Advanced search and filtering capabilities
-- **Architecture Decision**: Used direct psycopg2 for simplicity and reliability over ORM solutions
+  - Word count distribution analysis
+  - Site structure visualization
+  - Content relationship network graphs
+  - Interactive data tables
+  - Performance metrics dashboard
 
-### 5. Testing Framework (`testing_utils.py`)
-- **Purpose**: Response accuracy verification and system validation
+### 5. Caching System
+- **Purpose**: Local storage for crawled content and performance
 - **Features**:
-  - Source authenticity verification
-  - Price and plan name validation
-  - Accuracy scoring and reporting
-  - Automated test question generation
-- **Architecture Decision**: Built custom testing framework to validate AI responses against scraped data
-
-### 6. Utility Functions (`utils.py`)
-- **Purpose**: Data persistence and text processing utilities
-- **Features**:
-  - JSON-based data storage with metadata
-  - Text cleaning and preprocessing
-  - File I/O operations with error handling
+  - Automatic cache generation with metadata
+  - Cache loading and management interface
+  - Domain-based file organization
+  - Timestamp tracking for freshness
 
 ## Data Flow
 
