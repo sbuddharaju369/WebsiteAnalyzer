@@ -9,27 +9,6 @@ from sqlalchemy.dialects.postgresql import JSON
 
 Base = declarative_base()
 
-# Global variables for database
-engine = None
-SessionLocal = None
-
-def initialize_database():
-    """Initialize database connection"""
-    global engine, SessionLocal
-    
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if not DATABASE_URL:
-        return False
-    
-    try:
-        engine = create_engine(DATABASE_URL)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        Base.metadata.create_all(bind=engine)
-        return True
-    except Exception as e:
-        print(f"Database initialization error: {e}")
-        return False
-
 class VerizonPlan(Base):
     __tablename__ = "verizon_plans"
     

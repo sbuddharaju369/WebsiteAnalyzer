@@ -6,7 +6,7 @@ from scraper import VerizonScraper
 from rag_engine import RAGEngine
 from utils import save_scraped_data, load_scraped_data
 from testing_utils import AccuracyTester, create_verification_report
-from database import DatabaseManager, test_connection
+from database_simple import DatabaseManager
 
 # Page configuration
 st.set_page_config(
@@ -25,6 +25,10 @@ def initialize_session_state():
         st.session_state.last_scrape_time = None
     if 'scraped_data' not in st.session_state:
         st.session_state.scraped_data = []
+    if 'db_manager' not in st.session_state:
+        st.session_state.db_manager = None
+    if 'use_database' not in st.session_state:
+        st.session_state.use_database = False
 
 def check_openai_key():
     """Check if OpenAI API key is available"""
@@ -50,8 +54,20 @@ def scrape_verizon_data():
             all_data = mobile_plans + internet_plans + prepaid_plans + bundle_plans
             
             if all_data:
-                # Save scraped data
+                # Save to JSON file (for backward compatibility)
                 save_scraped_data(all_data)
+                
+                # Save to database if enabled
+                if st.session_state.use_database and st.session_state.db_manager:
+                    try:
+                        session_id = st.session_state.db_manager.save_scraped_plans(
+                            all_data, 
+                            f"Scraped {len(all_data)} plans from {len(set([p.get('category') for p in all_data]))} categories"
+                        )
+                        st.success(f"✅ Data saved to database (Session ID: {session_id})")
+                    except Exception as e:
+                        st.warning(f"⚠️ Database save failed: {str(e)}")
+                
                 st.session_state.scraped_data = all_data
                 st.session_state.last_scrape_time = datetime.now()
                 return all_data
@@ -108,6 +124,42 @@ def main():
     with st.sidebar:
         st.header("📊 Data Management")
         
+        # Database configuration
+        st.markdown("### 🗄️ Database Settings")
+        use_database = st.checkbox("Use PostgreSQL Database", value=st.session_state.use_database)
+        
+        if use_database != st.session_state.use_database:
+            st.session_state.use_database = use_database
+            if use_database:
+                try:
+                    st.session_state.db_manager = DatabaseManager()
+                    if st.session_state.db_manager.test_connection():
+                        st.success("✅ Database connected!")
+                    else:
+                        st.error("❌ Database connection failed")
+                        st.session_state.use_database = False
+                except Exception as e:
+                    st.error(f"❌ Database error: {str(e)}")
+                    st.session_state.use_database = False
+        
+        # Show database stats if connected
+        if st.session_state.use_database and st.session_state.db_manager:
+            try:
+                db_stats = st.session_state.db_manager.get_database_stats()
+                if db_stats:
+                    st.markdown("### 📈 Database Statistics")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Plans in DB", db_stats.get('total_plans', 0))
+                        st.metric("Queries", db_stats.get('total_queries', 0))
+                    with col2:
+                        st.metric("Sessions", db_stats.get('total_scraping_sessions', 0))
+                        if db_stats.get('latest_scraping_session', {}).get('date'):
+                            st.metric("Last Scrape", 
+                                    db_stats['latest_scraping_session']['date'][:10])
+            except Exception as e:
+                st.warning(f"⚠️ Database stats error: {str(e)}")
+        
         # Show last scrape time
         if st.session_state.last_scrape_time:
             st.info(f"🕐 Last updated: {st.session_state.last_scrape_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -125,17 +177,50 @@ def main():
                     st.rerun()
         
         with col2:
-            if st.button("📁 Load Saved", help="Load previously scraped data"):
-                existing_data = load_existing_data()
-                if existing_data:
-                    st.session_state.rag_engine = initialize_rag_engine(existing_data)
-                    st.session_state.data_loaded = True
-                    st.success("✅ Data loaded successfully!")
-                    st.rerun()
+            if st.button("📁 Load Data", help="Load data from JSON or database"):
+                if st.session_state.use_database and st.session_state.db_manager:
+                    # Load from database
+                    try:
+                        db_data = st.session_state.db_manager.get_all_plans()
+                        if db_data:
+                            st.session_state.scraped_data = db_data
+                            st.session_state.rag_engine = initialize_rag_engine(db_data)
+                            st.session_state.data_loaded = True
+                            st.success("✅ Data loaded from database!")
+                        else:
+                            st.warning("⚠️ No data found in database")
+                    except Exception as e:
+                        st.error(f"❌ Database load error: {str(e)}")
+                else:
+                    # Load from JSON file
+                    existing_data = load_existing_data()
+                    if existing_data:
+                        st.session_state.rag_engine = initialize_rag_engine(existing_data)
+                        st.session_state.data_loaded = True
+                        st.success("✅ Data loaded from file!")
+                st.rerun()
+        
+        # Database search functionality
+        if st.session_state.use_database and st.session_state.db_manager:
+            st.markdown("### 🔍 Database Search")
+            search_term = st.text_input("Search plans:", placeholder="e.g., unlimited, 5G")
+            category_filter = st.selectbox("Filter by category:", 
+                                         ["All", "mobile", "internet", "prepaid", "bundles"])
+            
+            if st.button("🔍 Search Database"):
+                try:
+                    search_results = st.session_state.db_manager.search_plans(
+                        search_term, 
+                        category_filter if category_filter != "All" else None
+                    )
+                    st.session_state.search_results = search_results
+                    st.success(f"Found {len(search_results)} matching plans")
+                except Exception as e:
+                    st.error(f"Search error: {str(e)}")
         
         # Show data statistics
         if st.session_state.scraped_data:
-            st.markdown("### 📈 Data Statistics")
+            st.markdown("### 📈 Current Data Statistics")
             total_plans = len(st.session_state.scraped_data)
             st.metric("Total Plans", total_plans)
             
@@ -147,6 +232,15 @@ def main():
             
             for category, count in categories.items():
                 st.metric(f"{category} Plans", count)
+        
+        # Query history
+        if st.session_state.use_database and st.session_state.db_manager:
+            if st.button("📜 View Query History"):
+                try:
+                    history = st.session_state.db_manager.get_query_history(10)
+                    st.session_state.query_history = history
+                except Exception as e:
+                    st.error(f"History error: {str(e)}")
     
     # Main content area
     if not st.session_state.data_loaded:
@@ -195,7 +289,21 @@ def main():
             with st.spinner("🤔 Thinking..."):
                 try:
                     # Get AI response
+                    start_time = datetime.now()
                     response = st.session_state.rag_engine.query(user_question)
+                    response_time = int((datetime.now() - start_time).total_seconds() * 1000)
+                    
+                    # Save query to database if enabled
+                    if st.session_state.use_database and st.session_state.db_manager:
+                        try:
+                            st.session_state.db_manager.save_query(
+                                user_question,
+                                response['answer'],
+                                response.get('sources', []),
+                                response_time_ms=response_time
+                            )
+                        except Exception as e:
+                            st.warning(f"Failed to save query to database: {str(e)}")
                     
                     # Display response
                     st.markdown("### 🤖 AI Assistant Response")
@@ -254,6 +362,39 @@ def main():
         
         elif user_question and not st.session_state.rag_engine:
             st.error("❌ RAG engine not initialized. Please refresh or load data first.")
+    
+    # Additional sections for database features
+    col1, col2 = st.columns(2)
+    
+    # Display search results if available
+    if hasattr(st.session_state, 'search_results') and st.session_state.search_results:
+        with col1:
+            st.markdown("### 🔍 Database Search Results")
+            for i, result in enumerate(st.session_state.search_results[:5], 1):
+                with st.expander(f"{i}. {result.get('title', 'Untitled')} ({result.get('category', 'Unknown')})"):
+                    if result.get('price'):
+                        st.write(f"**Price:** {result['price']}")
+                    if result.get('features'):
+                        st.write(f"**Features:** {', '.join(result['features'][:3])}")
+                    if result.get('content'):
+                        st.write(f"**Content:** {result['content'][:300]}...")
+                    if result.get('url'):
+                        st.write(f"**Source:** {result['url']}")
+    
+    # Display query history if available
+    if hasattr(st.session_state, 'query_history') and st.session_state.query_history:
+        with col2:
+            st.markdown("### 📜 Recent Query History")
+            for i, query in enumerate(st.session_state.query_history[:5], 1):
+                with st.expander(f"{i}. {query.get('question', 'Unknown')[:50]}..."):
+                    st.write(f"**Question:** {query.get('question', 'N/A')}")
+                    st.write(f"**Answer:** {query.get('answer', 'N/A')[:200]}...")
+                    if query.get('created_at'):
+                        st.write(f"**Date:** {query['created_at'][:19]}")
+                    if query.get('response_time_ms'):
+                        st.write(f"**Response Time:** {query['response_time_ms']}ms")
+                    if query.get('accuracy_score'):
+                        st.write(f"**Accuracy Score:** {query['accuracy_score']:.1%}")
 
 if __name__ == "__main__":
     main()
