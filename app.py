@@ -641,6 +641,7 @@ def main():
             - More content = better context for AI analysis
             - Diverse pages provide comprehensive coverage
             - Current crawl limit can be adjusted in the sidebar
+            - Check the "Website Coverage" percentage in the sidebar - aim for 50%+ when possible
             
             **2. Ask Specific Questions**
             - Instead of: "Tell me about this site"

@@ -114,6 +114,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 15, 2025: Improved network visualization with better node spacing, color coding, and interactive features
 - June 15, 2025: Added user-friendly cache file naming with readable timestamps
 - June 15, 2025: Added comprehensive reliability improvement guide and search vs question explanation
+- June 15, 2025: Implemented website coverage percentage feature with sitemap-based estimation and removed unnecessary UI elements
 
 ## Recent Changes
 
@@ -128,6 +129,8 @@ The application follows a modular architecture with clear separation of concerns
 - **Source Attribution**: Enhanced source display with relevance color coding and clearer explanations
 - **Search vs Questions**: Added clear explanation of the difference between AI-powered questions and semantic search
 - **Reliability Guide**: Comprehensive section on improving answer quality with specific recommendations
+- **Website Coverage**: Added intelligent website size estimation and coverage percentage display in sidebar
+- **UI Cleanup**: Removed non-functional "Sample Pages" dropdown for cleaner interface
 
 ### Technical Enhancements
 - **Confidence Algorithm**: Fixed negative confidence scores by implementing robust similarity calculations with proper bounds

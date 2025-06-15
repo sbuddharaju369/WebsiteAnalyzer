@@ -16,6 +16,7 @@ class WebCrawler:
         self.delay = delay
         self.visited_urls = set()
         self.scraped_content = []
+        self.estimated_total_pages = None
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
