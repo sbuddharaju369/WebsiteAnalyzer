@@ -3,7 +3,7 @@ import time
 import os
 from datetime import datetime, timedelta
 from scraper import VerizonScraper
-from rag_engine import RAGEngine
+from chroma_engine import ChromaRAGEngine
 from utils import save_scraped_data, load_scraped_data
 from testing_utils import AccuracyTester, create_verification_report
 from database_simple import DatabaseManager
@@ -96,13 +96,13 @@ def load_existing_data():
         return []
 
 def initialize_rag_engine(data):
-    """Initialize the RAG engine with scraped data"""
+    """Initialize the ChromaDB RAG engine with scraped data"""
     if not data:
         return None
         
-    with st.spinner("🧠 Initializing AI engine..."):
+    with st.spinner("🧠 Initializing AI engine with ChromaDB..."):
         try:
-            rag_engine = RAGEngine()
+            rag_engine = ChromaRAGEngine()
             rag_engine.process_documents(data)
             return rag_engine
         except Exception as e:
@@ -200,23 +200,50 @@ def main():
                         st.success("✅ Data loaded from file!")
                 st.rerun()
         
-        # Database search functionality
-        if st.session_state.use_database and st.session_state.db_manager:
-            st.markdown("### 🔍 Database Search")
-            search_term = st.text_input("Search plans:", placeholder="e.g., unlimited, 5G")
+        # Vector database search functionality
+        if st.session_state.rag_engine:
+            st.markdown("### 🔍 Vector Search (ChromaDB)")
+            search_term = st.text_input("Semantic search:", placeholder="e.g., unlimited data plans with streaming")
             category_filter = st.selectbox("Filter by category:", 
-                                         ["All", "mobile", "internet", "prepaid", "bundles"])
+                                         ["all", "mobile", "internet", "prepaid", "bundles"])
             
-            if st.button("🔍 Search Database"):
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔍 Vector Search"):
+                    try:
+                        filters = {"category": category_filter} if category_filter != "all" else {}
+                        search_results = st.session_state.rag_engine.search_similar(search_term, filters, k=10)
+                        st.session_state.vector_search_results = search_results
+                        st.success(f"Found {len(search_results)} similar plans")
+                    except Exception as e:
+                        st.error(f"Vector search error: {str(e)}")
+            
+            with col2:
+                if st.button("📊 ChromaDB Stats"):
+                    try:
+                        stats = st.session_state.rag_engine.get_collection_stats()
+                        st.session_state.chroma_stats = stats
+                        st.success("ChromaDB statistics updated")
+                    except Exception as e:
+                        st.error(f"Stats error: {str(e)}")
+        
+        # Traditional database search functionality
+        if st.session_state.use_database and st.session_state.db_manager:
+            st.markdown("### 🗄️ Database Search")
+            db_search_term = st.text_input("Database search:", placeholder="e.g., unlimited, 5G", key="db_search")
+            db_category_filter = st.selectbox("DB Filter by category:", 
+                                         ["All", "mobile", "internet", "prepaid", "bundles"], key="db_category")
+            
+            if st.button("🔍 Search PostgreSQL"):
                 try:
                     search_results = st.session_state.db_manager.search_plans(
-                        search_term, 
-                        category_filter if category_filter != "All" else None
+                        db_search_term, 
+                        db_category_filter if db_category_filter != "All" else None
                     )
-                    st.session_state.search_results = search_results
-                    st.success(f"Found {len(search_results)} matching plans")
+                    st.session_state.db_search_results = search_results
+                    st.success(f"Found {len(search_results)} matching plans in PostgreSQL")
                 except Exception as e:
-                    st.error(f"Search error: {str(e)}")
+                    st.error(f"Database search error: {str(e)}")
         
         # Show data statistics
         if st.session_state.scraped_data:
@@ -366,35 +393,74 @@ def main():
     # Additional sections for database features
     col1, col2 = st.columns(2)
     
-    # Display search results if available
-    if hasattr(st.session_state, 'search_results') and st.session_state.search_results:
+    # Display ChromaDB statistics if available
+    if hasattr(st.session_state, 'chroma_stats') and st.session_state.chroma_stats:
         with col1:
-            st.markdown("### 🔍 Database Search Results")
-            for i, result in enumerate(st.session_state.search_results[:5], 1):
-                with st.expander(f"{i}. {result.get('title', 'Untitled')} ({result.get('category', 'Unknown')})"):
+            st.markdown("### 📊 ChromaDB Statistics")
+            stats = st.session_state.chroma_stats
+            st.metric("Total Chunks", stats.get('total_chunks', 0))
+            st.metric("Queries Processed", stats.get('query_history_count', 0))
+            
+            if stats.get('categories'):
+                st.markdown("**Categories Distribution:**")
+                for category, count in stats['categories'].items():
+                    st.write(f"- {category}: {count} chunks")
+    
+    # Display vector search results if available
+    if hasattr(st.session_state, 'vector_search_results') and st.session_state.vector_search_results:
+        with col2:
+            st.markdown("### 🔍 Vector Search Results")
+            for i, result in enumerate(st.session_state.vector_search_results[:5], 1):
+                similarity = result.get('similarity_score', 0)
+                with st.expander(f"{i}. {result.get('title', 'Untitled')} (Score: {similarity:.3f})"):
+                    st.write(f"**Category:** {result.get('category', 'Unknown')}")
                     if result.get('price'):
                         st.write(f"**Price:** {result['price']}")
                     if result.get('features'):
-                        st.write(f"**Features:** {', '.join(result['features'][:3])}")
+                        features_str = ', '.join(result['features'][:3]) if isinstance(result['features'], list) else str(result['features'])
+                        st.write(f"**Features:** {features_str}")
                     if result.get('content'):
-                        st.write(f"**Content:** {result['content'][:300]}...")
-                    if result.get('url'):
-                        st.write(f"**Source:** {result['url']}")
+                        st.write(f"**Content:** {result['content'][:200]}...")
+                    st.write(f"**Similarity Score:** {similarity:.3f}")
     
-    # Display query history if available
+    # Display PostgreSQL search results if available
+    if hasattr(st.session_state, 'db_search_results') and st.session_state.db_search_results:
+        st.markdown("### 🗄️ PostgreSQL Search Results")
+        for i, result in enumerate(st.session_state.db_search_results[:5], 1):
+            with st.expander(f"{i}. {result.get('title', 'Untitled')} ({result.get('category', 'Unknown')})"):
+                if result.get('price'):
+                    st.write(f"**Price:** {result['price']}")
+                if result.get('features'):
+                    st.write(f"**Features:** {', '.join(result['features'][:3])}")
+                if result.get('content'):
+                    st.write(f"**Content:** {result['content'][:300]}...")
+                if result.get('url'):
+                    st.write(f"**Source:** {result['url']}")
+    
+    # Display PostgreSQL query history if available
     if hasattr(st.session_state, 'query_history') and st.session_state.query_history:
-        with col2:
-            st.markdown("### 📜 Recent Query History")
-            for i, query in enumerate(st.session_state.query_history[:5], 1):
+        st.markdown("### 📜 PostgreSQL Query History")
+        for i, query in enumerate(st.session_state.query_history[:3], 1):
+            with st.expander(f"{i}. {query.get('question', 'Unknown')[:50]}..."):
+                st.write(f"**Question:** {query.get('question', 'N/A')}")
+                st.write(f"**Answer:** {query.get('answer', 'N/A')[:200]}...")
+                if query.get('created_at'):
+                    st.write(f"**Date:** {query['created_at'][:19]}")
+                if query.get('response_time_ms'):
+                    st.write(f"**Response Time:** {query['response_time_ms']}ms")
+    
+    # Display ChromaDB query history if available
+    if st.session_state.rag_engine:
+        chroma_history = st.session_state.rag_engine.get_query_history(5)
+        if chroma_history:
+            st.markdown("### 🧠 ChromaDB Query History")
+            for i, query in enumerate(chroma_history, 1):
                 with st.expander(f"{i}. {query.get('question', 'Unknown')[:50]}..."):
                     st.write(f"**Question:** {query.get('question', 'N/A')}")
                     st.write(f"**Answer:** {query.get('answer', 'N/A')[:200]}...")
-                    if query.get('created_at'):
-                        st.write(f"**Date:** {query['created_at'][:19]}")
-                    if query.get('response_time_ms'):
-                        st.write(f"**Response Time:** {query['response_time_ms']}ms")
-                    if query.get('accuracy_score'):
-                        st.write(f"**Accuracy Score:** {query['accuracy_score']:.1%}")
+                    st.write(f"**Sources Used:** {query.get('sources_count', 0)}")
+                    if query.get('timestamp'):
+                        st.write(f"**Date:** {query['timestamp'][:19]}")
 
 if __name__ == "__main__":
     main()

@@ -26,14 +26,15 @@ The application follows a modular architecture with clear separation of concerns
   - Content extraction and cleaning
 - **Architecture Decision**: Chose trafilatura for robust content extraction over basic BeautifulSoup parsing to handle dynamic content better
 
-### 2. RAG Engine (`rag_engine.py`)
+### 2. RAG Engine (`chroma_engine.py`)
 - **Purpose**: Provides intelligent question-answering using scraped data
-- **Technology**: OpenAI GPT models, FAISS vector database, text embeddings
+- **Technology**: OpenAI GPT models, ChromaDB vector database, text embeddings
 - **Features**:
   - Text chunking with overlap for better context preservation
-  - Vector similarity search for relevant information retrieval
-  - Context-aware response generation
-- **Architecture Decision**: Used FAISS for local vector storage instead of cloud solutions to maintain data privacy and reduce external dependencies
+  - Semantic similarity search with metadata filtering
+  - Persistent vector storage with query history
+  - Advanced filtering by category and content
+- **Architecture Decision**: Migrated from FAISS to ChromaDB for better metadata handling, persistence, and filtering capabilities
 
 ### 3. Streamlit Frontend (`app.py`)
 - **Purpose**: User interface for interacting with the system
@@ -86,7 +87,7 @@ The application follows a modular architecture with clear separation of concerns
 ### Core Dependencies
 - **OpenAI API**: For text embeddings and chat completions
 - **Streamlit**: Web framework for the user interface
-- **FAISS**: Vector similarity search engine
+- **ChromaDB**: Vector database for semantic search and embeddings storage
 - **Beautiful Soup**: HTML parsing and web scraping
 - **Trafilatura**: Content extraction from web pages
 - **Requests**: HTTP client for web scraping

@@ -5,6 +5,7 @@ description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.13.4",
+    "chromadb>=1.0.12",
     "faiss-cpu>=1.11.0",
     "numpy>=2.3.0",
     "openai>=1.86.0",
