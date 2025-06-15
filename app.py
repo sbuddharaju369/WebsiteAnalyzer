@@ -66,6 +66,17 @@ def crawl_website(url, max_pages, delay):
     """Crawl website and return content"""
     crawler = WebCrawler(max_pages=max_pages, delay=delay)
     
+    # Estimate total pages before crawling
+    with st.spinner("Analyzing website structure..."):
+        estimated_total = crawler.estimate_total_pages(url)
+        crawler.estimated_total_pages = estimated_total
+    
+    # Show estimation to user
+    if estimated_total > max_pages:
+        st.info(f"📊 Website has approximately {estimated_total} pages. You'll crawl {max_pages} pages ({(max_pages/estimated_total)*100:.1f}% coverage)")
+    else:
+        st.info(f"📊 Website has approximately {estimated_total} pages. You'll crawl up to {max_pages} pages (potentially 100% coverage)")
+    
     # Progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -342,17 +353,27 @@ def main():
                 st.metric("Total Pages", stats.get('total_pages', 0))
                 st.metric("Total Words", f"{stats.get('total_words', 0):,}")
                 st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
+                
+                # Coverage percentage if available
+                if stats.get('coverage_percentage') is not None:
+                    coverage = stats['coverage_percentage']
+                    estimated_total = stats.get('estimated_total_pages', 0)
+                    
+                    # Color code coverage
+                    if coverage >= 80:
+                        coverage_color = "green"
+                    elif coverage >= 50:
+                        coverage_color = "orange"
+                    else:
+                        coverage_color = "red"
+                    
+                    st.markdown(f"**Website Coverage:** :{coverage_color}[{coverage:.1f}%]")
+                    st.caption(f"Crawled {stats['total_pages']} of ~{estimated_total} total pages")
             
             # Content summary
             if st.session_state.rag_engine:
                 summary = st.session_state.rag_engine.get_content_summary()
-                
                 st.markdown("**Content Chunks:** " + str(summary.get('total_chunks', 0)))
-                
-                if summary.get('sample_titles'):
-                    with st.expander("📄 Sample Pages"):
-                        for title in summary['sample_titles']:
-                            st.markdown(f"• {title}")
     
     # Main content area
     if not st.session_state.crawled_content:

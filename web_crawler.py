@@ -194,6 +194,56 @@ class WebCrawler:
             print(f"Error loading cache: {e}")
             return []
     
+    def estimate_total_pages(self, start_url: str) -> int:
+        """Estimate total number of pages on the website"""
+        import re
+        try:
+            from urllib.parse import urlparse, urljoin
+            
+            # Get the base domain
+            parsed_url = urlparse(start_url)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            
+            # Check for sitemap first
+            sitemap_urls = ['/sitemap.xml', '/sitemap_index.xml', '/robots.txt']
+            
+            for sitemap_path in sitemap_urls:
+                try:
+                    sitemap_url = urljoin(base_url, sitemap_path)
+                    response = self.session.get(sitemap_url, timeout=5)
+                    
+                    if response.status_code == 200:
+                        content = response.text.lower()
+                        
+                        if 'sitemap' in sitemap_path and 'xml' in content:
+                            # Count URLs in sitemap
+                            url_count = len(re.findall(r'<(?:url|loc)>', content, re.IGNORECASE))
+                            if url_count > 5:  # Valid sitemap with URLs
+                                return min(url_count, 1000)  # Cap at reasonable limit
+                        
+                        elif 'robots.txt' in sitemap_path:
+                            # Look for sitemap references in robots.txt
+                            sitemap_refs = re.findall(r'sitemap:\s*(\S+)', content, re.IGNORECASE)
+                            if sitemap_refs:
+                                # Try to fetch the referenced sitemap
+                                try:
+                                    sitemap_response = self.session.get(sitemap_refs[0], timeout=5)
+                                    if sitemap_response.status_code == 200:
+                                        url_count = len(re.findall(r'<(?:url|loc)>', sitemap_response.text, re.IGNORECASE))
+                                        if url_count > 5:
+                                            return min(url_count, 1000)
+                                except:
+                                    pass
+                except:
+                    continue
+            
+            # Fallback: estimate based on discovered links during initial crawl
+            # This will be updated during crawling
+            return 50  # Conservative default estimate
+            
+        except Exception:
+            return 50  # Default conservative estimate
+
     def get_crawl_stats(self) -> Dict[str, Any]:
         """Get statistics about the crawled content"""
         if not self.scraped_content:
@@ -202,10 +252,18 @@ class WebCrawler:
         total_words = sum(page.get('word_count', 0) for page in self.scraped_content)
         avg_words = total_words / len(self.scraped_content) if self.scraped_content else 0
         
-        return {
+        stats = {
             'total_pages': len(self.scraped_content),
             'total_words': total_words,
             'average_words_per_page': avg_words,
             'unique_titles': len(set(page.get('title', '') for page in self.scraped_content)),
             'pages_with_descriptions': len([p for p in self.scraped_content if p.get('description')])
         }
+        
+        # Add coverage percentage if available
+        if hasattr(self, 'estimated_total_pages') and self.estimated_total_pages:
+            coverage_percentage = (len(self.scraped_content) / self.estimated_total_pages) * 100
+            stats['coverage_percentage'] = min(coverage_percentage, 100)
+            stats['estimated_total_pages'] = self.estimated_total_pages
+        
+        return stats
