@@ -124,50 +124,94 @@ def create_content_visualization(content):
     
     return fig_words, fig_depth
 
-def create_network_graph(content):
-    """Create a network graph of content relationships"""
+def create_improved_network_graph(content):
+    """Create an improved network graph of content relationships"""
     if len(content) < 2:
         return None
     
     nodes = []
     edges = []
     
-    # Create nodes for each page
-    for i, page in enumerate(content[:20]):  # Limit to 20 for performance
+    # Limit to 15 nodes to reduce clutter
+    content_subset = content[:15]
+    
+    # Create nodes for each page with better spacing
+    for i, page in enumerate(content_subset):
         title = page.get('title', f"Page {i+1}")
         word_count = page.get('word_count', 0)
+        url_path = page.get('url', '').split('/')[-1] or 'home'
         
-        # Node size based on word count
-        size = max(10, min(30, word_count / 100))
+        # Better node sizing - more reasonable range
+        size = max(15, min(35, word_count / 50))
+        
+        # Color coding based on content type
+        if 'home' in title.lower() or url_path == '' or 'index' in url_path:
+            color = "#FF6B6B"  # Red for home/main pages
+        elif word_count > 1000:
+            color = "#4ECDC4"  # Teal for content-heavy pages
+        elif any(word in title.lower() for word in ['product', 'service', 'plan']):
+            color = "#45B7D1"  # Blue for product pages
+        else:
+            color = "#96CEB4"  # Green for other pages
+        
+        # Shorter, cleaner labels
+        clean_title = title.replace('|', '-').replace('  ', ' ')
+        label = clean_title[:25] + "..." if len(clean_title) > 25 else clean_title
         
         nodes.append(Node(
             id=str(i),
-            label=title[:30] + "..." if len(title) > 30 else title,
+            label=label,
             size=size,
-            color="#FF6B6B" if word_count > 1000 else "#4ECDC4"
+            color=color,
+            title=f"{title}\nWords: {word_count}\nURL: {page.get('url', 'N/A')}"  # Tooltip
         ))
     
-    # Create edges based on content similarity (simplified)
-    for i in range(min(len(content), 20)):
-        for j in range(i+1, min(len(content), 20)):
-            # Simple similarity based on common words in titles
-            title1 = content[i].get('title', '').lower().split()
-            title2 = content[j].get('title', '').lower().split()
-            common_words = set(title1) & set(title2)
+    # Create edges with better similarity calculation
+    for i in range(len(content_subset)):
+        for j in range(i+1, len(content_subset)):
+            # Enhanced similarity based on multiple factors
+            title1 = content_subset[i].get('title', '').lower()
+            title2 = content_subset[j].get('title', '').lower()
+            content1 = content_subset[i].get('content', '')[:500].lower()
+            content2 = content_subset[j].get('content', '')[:500].lower()
             
-            if len(common_words) > 1:
+            # Title similarity
+            title1_words = set(title1.split())
+            title2_words = set(title2.split())
+            title_similarity = len(title1_words & title2_words)
+            
+            # Content similarity (simplified)
+            content1_words = set(content1.split())
+            content2_words = set(content2.split())
+            content_similarity = len(content1_words & content2_words)
+            
+            # Combined similarity score
+            total_similarity = title_similarity * 2 + min(content_similarity / 10, 5)
+            
+            # Only create edge if similarity is meaningful
+            if total_similarity >= 3:
+                # Cap edge width for better visualization
+                edge_width = min(total_similarity / 2, 5)
+                
                 edges.append(Edge(
                     source=str(i),
                     target=str(j),
-                    width=len(common_words)
+                    width=edge_width,
+                    color="#E0E0E0"
                 ))
     
+    # Improved configuration for better layout
     config = Config(
-        width=700,
-        height=400,
+        width=800,
+        height=500,
         directed=False,
         physics=True,
-        hierarchical=False
+        hierarchical=False,
+        nodeHighlightBehavior=True,
+        highlightColor="#F0F0F0",
+        linkHighlightBehavior=True,
+        maxZoom=3,
+        minZoom=0.3
     )
     
     return agraph(nodes=nodes, edges=edges, config=config)
@@ -234,10 +278,33 @@ def main():
         st.session_state.cache_files = cache_files
         
         if cache_files:
+            def format_cache_name(filename):
+                if filename is None:
+                    return "Select cache file..."
+                
+                # Extract domain and timestamp from filename
+                parts = filename.split('_')
+                if len(parts) >= 3:
+                    domain = parts[1].replace('www.', '')
+                    timestamp = parts[2].replace('.json', '')
+                    try:
+                        # Parse timestamp and make it user-friendly
+                        from datetime import datetime
+                        dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
+                        date_str = dt.strftime("%B %d, %Y at %I:%M %p")
+                        pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
+                        return f"{domain} - {date_str} ({pages} pages)"
+                    except:
+                        pass
+                
+                # Fallback to original format
+                pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
+                return f"{filename} ({pages} pages)"
+            
             selected_cache = st.selectbox(
                 "Load from cache:",
                 options=[None] + [f['filename'] for f in cache_files],
-                format_func=lambda x: "Select cache file..." if x is None else f"{x} ({next(f['total_pages'] for f in cache_files if f['filename'] == x)} pages)"
+                format_func=format_cache_name
             )
             
             if st.button("📂 Load Cache") and selected_cache:
@@ -264,6 +331,28 @@ def main():
                         st.error(f"Error loading cache: {str(e)}")
         else:
             st.info("No cache files found")
+        
+        # Content Overview in sidebar
+        if st.session_state.crawled_content:
+            st.markdown("### 📊 Content Overview")
+            
+            # Quick stats
+            stats = st.session_state.crawl_stats
+            if stats:
+                st.metric("Total Pages", stats.get('total_pages', 0))
+                st.metric("Total Words", f"{stats.get('total_words', 0):,}")
+                st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
+            
+            # Content summary
+            if st.session_state.rag_engine:
+                summary = st.session_state.rag_engine.get_content_summary()
+                
+                st.markdown("**Content Chunks:** " + str(summary.get('total_chunks', 0)))
+                
+                if summary.get('sample_titles'):
+                    with st.expander("📄 Sample Pages"):
+                        for title in summary['sample_titles']:
+                            st.markdown(f"• {title}")
     
     # Main content area
     if not st.session_state.crawled_content:
@@ -311,120 +400,96 @@ def main():
         st.info("👆 Enter a website URL in the sidebar to get started!")
     
     else:
-        # Content analysis interface
-        col1, col2 = st.columns([2, 1])
+        # Content analysis interface - full width
+        st.header(f"💬 Ask Questions about {st.session_state.current_domain}")
         
-        with col1:
-            st.header(f"💬 Ask Questions about {st.session_state.current_domain}")
+        # Suggested questions
+        if st.session_state.rag_engine:
+            suggested_questions = st.session_state.rag_engine.suggest_questions()
             
-            # Suggested questions
-            if st.session_state.rag_engine:
-                suggested_questions = st.session_state.rag_engine.suggest_questions()
+            with st.expander("💡 Suggested Questions"):
+                for question in suggested_questions[:6]:
+                    if st.button(f"❓ {question}", key=f"suggested_{hash(question)}"):
+                        st.session_state.current_question = question
+        
+        # Question input
+        question = st.text_area(
+            "Your question:",
+            placeholder="Ask anything about the website content...",
+            height=80
+        )
+        
+        # Use suggested question if set
+        if hasattr(st.session_state, 'current_question'):
+            question = st.session_state.current_question
+            delattr(st.session_state, 'current_question')
+        
+        if question and st.session_state.rag_engine:
+            with st.spinner("Analyzing content..."):
+                result = st.session_state.rag_engine.analyze_content(question)
                 
-                with st.expander("💡 Suggested Questions"):
-                    for question in suggested_questions[:6]:
-                        if st.button(f"❓ {question}", key=f"suggested_{hash(question)}"):
-                            st.session_state.current_question = question
-            
-            # Question input
-            question = st.text_area(
-                "Your question:",
-                placeholder="Ask anything about the website content...",
-                height=80
-            )
-            
-            # Use suggested question if set
-            if hasattr(st.session_state, 'current_question'):
-                question = st.session_state.current_question
-                delattr(st.session_state, 'current_question')
-            
-            if question and st.session_state.rag_engine:
-                with st.spinner("Analyzing content..."):
-                    result = st.session_state.rag_engine.analyze_content(question)
-                    
-                    # Display answer
-                    st.markdown("### 🤖 Analysis Result")
-                    st.markdown(result['answer'])
-                    
-                    # User-friendly confidence indicator
-                    confidence = result.get('confidence', 0)
-                    
-                    if confidence >= 0.8:
-                        confidence_emoji = "🟢"
-                        confidence_text = "Very Reliable"
-                        confidence_desc = "High quality sources with strong relevance"
-                    elif confidence >= 0.6:
-                        confidence_emoji = "🟡" 
-                        confidence_text = "Mostly Reliable"
-                        confidence_desc = "Good sources with decent relevance"
-                    elif confidence >= 0.4:
-                        confidence_emoji = "🟠"
-                        confidence_text = "Somewhat Reliable"
-                        confidence_desc = "Some relevant information found"
-                    else:
-                        confidence_emoji = "🔴"
-                        confidence_text = "Limited Reliability"
-                        confidence_desc = "Limited relevant information available"
-                    
-                    col_conf, col_info = st.columns([3, 1])
-                    with col_conf:
-                        st.markdown(f"**Answer Quality:** {confidence_emoji} {confidence_text}")
-                        st.caption(confidence_desc)
-                    with col_info:
-                        with st.expander("ℹ️ About Quality"):
-                            st.markdown("""
-                            **Quality scoring is based on:**
-                            - How well the content matches your question
-                            - Number of relevant sources found
-                            - Content overlap and consistency
+                # Display answer
+                st.markdown("### 🤖 Analysis Result")
+                st.markdown(result['answer'])
+                
+                # User-friendly confidence indicator
+                confidence = result.get('confidence', 0)
+                
+                if confidence >= 0.8:
+                    confidence_emoji = "🟢"
+                    confidence_text = "Very Reliable"
+                    confidence_desc = "High quality sources with strong relevance"
+                elif confidence >= 0.6:
+                    confidence_emoji = "🟡" 
+                    confidence_text = "Mostly Reliable"
+                    confidence_desc = "Good sources with decent relevance"
+                elif confidence >= 0.4:
+                    confidence_emoji = "🟠"
+                    confidence_text = "Somewhat Reliable"
+                    confidence_desc = "Some relevant information found"
+                else:
+                    confidence_emoji = "🔴"
+                    confidence_text = "Limited Reliability"
+                    confidence_desc = "Limited relevant information available"
+                
+                col_conf, col_info = st.columns([3, 1])
+                with col_conf:
+                    st.markdown(f"**Answer Quality:** {confidence_emoji} {confidence_text}")
+                    st.caption(confidence_desc)
+                with col_info:
+                    with st.expander("ℹ️ About Quality"):
+                        st.markdown("""
+                        **Quality scoring is based on:**
+                        - How well the content matches your question
+                        - Number of relevant sources found
+                        - Content overlap and consistency
+                        
+                        Higher scores mean the answer is more reliable and well-supported by the website content.
+                        """)
+                
+                # Sources
+                if result.get('sources'):
+                    with st.expander(f"📚 Sources ({len(result['sources'])} unique pages)"):
+                        st.caption("Each source shows how well that page content matches your question")
+                        for i, source in enumerate(result['sources'][:5], 1):
+                            similarity = source.get('similarity_score', 0)
                             
-                            Higher scores mean the answer is more reliable and well-supported by the website content.
+                            # Color code relevance
+                            if similarity >= 0.7:
+                                relevance_icon = "🟢"
+                                relevance_text = "Highly Relevant"
+                            elif similarity >= 0.5:
+                                relevance_icon = "🟡"
+                                relevance_text = "Moderately Relevant"
+                            else:
+                                relevance_icon = "🟠"
+                                relevance_text = "Somewhat Relevant"
+                            
+                            st.markdown(f"""
+                            **{i}. {source.get('title', 'Untitled')}**  
+                            🔗 [{source.get('url', 'No URL')}]({source.get('url', '#')})  
+                            {relevance_icon} {relevance_text} ({similarity:.1%})
                             """)
-                    
-                    # Sources
-                    if result.get('sources'):
-                        with st.expander(f"📚 Sources ({len(result['sources'])} unique pages)"):
-                            st.caption("Each source shows how well that page content matches your question")
-                            for i, source in enumerate(result['sources'][:5], 1):
-                                similarity = source.get('similarity_score', 0)
-                                
-                                # Color code relevance
-                                if similarity >= 0.7:
-                                    relevance_icon = "🟢"
-                                    relevance_text = "Highly Relevant"
-                                elif similarity >= 0.5:
-                                    relevance_icon = "🟡"
-                                    relevance_text = "Moderately Relevant"
-                                else:
-                                    relevance_icon = "🟠"
-                                    relevance_text = "Somewhat Relevant"
-                                
-                                st.markdown(f"""
-                                **{i}. {source.get('title', 'Untitled')}**  
-                                🔗 [{source.get('url', 'No URL')}]({source.get('url', '#')})  
-                                {relevance_icon} {relevance_text} ({similarity:.1%})
-                                """)
-        
-        with col2:
-            st.header("📊 Content Overview")
-            
-            # Quick stats
-            stats = st.session_state.crawl_stats
-            if stats:
-                st.metric("Total Pages", stats.get('total_pages', 0))
-                st.metric("Total Words", f"{stats.get('total_words', 0):,}")
-                st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
-            
-            # Content summary
-            if st.session_state.rag_engine:
-                summary = st.session_state.rag_engine.get_content_summary()
-                
-                st.markdown("**Content Chunks:** " + str(summary.get('total_chunks', 0)))
-                
-                if summary.get('sample_titles'):
-                    with st.expander("📄 Sample Pages"):
-                        for title in summary['sample_titles']:
-                            st.markdown(f"• {title}")
         
         # Analytics tabs
         st.markdown("---")
@@ -433,26 +498,51 @@ def main():
         with tab1:
             st.header("Content Analytics")
             
-            # Visualizations
+            # Visualizations side by side
             fig_words, fig_depth = create_content_visualization(st.session_state.crawled_content)
             
-            if fig_words:
+            if fig_words and fig_depth:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.plotly_chart(fig_words, use_container_width=True)
+                with col2:
+                    st.plotly_chart(fig_depth, use_container_width=True)
+            elif fig_words:
                 st.plotly_chart(fig_words, use_container_width=True)
-            
-            if fig_depth:
+            elif fig_depth:
                 st.plotly_chart(fig_depth, use_container_width=True)
             
-            # Network graph
+            # Improved Network graph
             st.subheader("Content Relationship Network")
+            st.caption("Interactive visualization showing how pages relate to each other based on content similarity")
+            
             try:
-                network_result = create_network_graph(st.session_state.crawled_content)
+                network_result = create_improved_network_graph(st.session_state.crawled_content)
                 if network_result:
-                    st.info("Node size represents word count. Connections show content similarity.")
+                    st.info("💡 Larger nodes = more content. Thicker connections = stronger similarity. Click and drag to explore!")
+                else:
+                    st.info("Network requires at least 2 pages to display relationships")
             except Exception as e:
-                st.info("Network visualization not available for this content")
+                st.info("Network visualization temporarily unavailable")
         
         with tab2:
             st.header("Semantic Search")
+            
+            # Explanation of the difference
+            with st.expander("What's the difference between Questions and Search?"):
+                st.markdown("""
+                **User Questions (AI Analysis):**
+                - Uses AI to understand and analyze your question
+                - Combines information from multiple sources
+                - Provides comprehensive answers with context
+                - Best for: "What are the main features?" or "How much does it cost?"
+                
+                **Semantic Search (Direct Lookup):**
+                - Finds pages that contain similar content to your search terms
+                - Shows you the actual pages without interpretation
+                - Returns ranked list of matching content
+                - Best for: Finding specific pages, exploring content, or getting raw information
+                """)
             
             search_query = st.text_input("Search content:", placeholder="Enter search terms...")
             
@@ -462,7 +552,17 @@ def main():
                 st.write(f"Found {len(results)} relevant results:")
                 
                 for i, result in enumerate(results[:5], 1):
-                    with st.expander(f"{i}. {result['title']} (Relevance: {result['similarity_score']:.1%})"):
+                    similarity = result.get('similarity_score', 0)
+                    
+                    # Color code search relevance
+                    if similarity >= 0.7:
+                        relevance_icon = "🟢"
+                    elif similarity >= 0.5:
+                        relevance_icon = "🟡"
+                    else:
+                        relevance_icon = "🟠"
+                    
+                    with st.expander(f"{i}. {result['title']} {relevance_icon} {similarity:.1%}"):
                         st.markdown(f"**URL:** {result['url']}")
                         st.markdown(f"**Content Preview:**")
                         st.text(result['content'][:300] + "..." if len(result['content']) > 300 else result['content'])
@@ -507,6 +607,48 @@ def main():
                     
                     with st.expander("View full content"):
                         st.text(page.get('content', 'No content available'))
+            else:
+                st.info("No content available. Crawl a website first.")
+        
+        # Reliability Tips Section
+        st.markdown("---")
+        with st.expander("💡 How to Improve Answer Reliability"):
+            st.markdown("""
+            **To get the most reliable answers from the Web Content Analyzer:**
+            
+            **1. Crawl More Pages (15-100 recommended)**
+            - More content = better context for AI analysis
+            - Diverse pages provide comprehensive coverage
+            - Current crawl limit can be adjusted in the sidebar
+            
+            **2. Ask Specific Questions**
+            - Instead of: "Tell me about this site"
+            - Try: "What are the main product features?" or "What pricing options are available?"
+            
+            **3. Use Keywords in Search**
+            - For semantic search, use specific terms from the website
+            - Multiple related keywords work better than single words
+            
+            **4. Check Source Quality**
+            - Look at the sources shown with each answer
+            - Higher similarity scores (70%+) indicate better matches
+            - Multiple relevant sources increase confidence
+            
+            **5. Compare Question vs Search Results**
+            - Use questions for analysis and summaries
+            - Use semantic search to verify specific details
+            
+            **6. Website Content Quality Matters**
+            - Well-structured sites with clear content work better
+            - Sites with lots of text content provide richer analysis
+            - Technical documentation and product pages are ideal
+            
+            **Current Quality Indicators:**
+            - 🟢 Very Reliable (80%+): High confidence, multiple good sources
+            - 🟡 Mostly Reliable (60-80%): Good sources, decent coverage
+            - 🟠 Somewhat Reliable (40-60%): Limited relevant information
+            - 🔴 Limited Reliability (<40%): Insufficient matching content
+            """)
 
 if __name__ == "__main__":
     main()
