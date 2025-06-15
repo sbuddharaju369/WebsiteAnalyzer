@@ -147,9 +147,15 @@ class WebCrawler:
                 except Exception as e:
                     print(f"Error getting links from {current_url}: {e}")
             
-            # Progress callback
+            # Enhanced progress callback with current page info
             if progress_callback:
-                progress_callback(len(self.visited_urls), len(self.scraped_content))
+                page_title = content.get('title', 'Untitled') if content else 'Failed to load'
+                progress_callback(
+                    len(self.visited_urls), 
+                    len(self.scraped_content),
+                    current_url,
+                    page_title
+                )
             
             # Rate limiting
             time.sleep(self.delay)

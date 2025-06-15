@@ -36,6 +36,57 @@ def initialize_session_state():
         if key not in st.session_state:
             st.session_state[key] = default
 
+def update_progress_chart(chart_placeholder, performance_data):
+    """Update the real-time progress chart"""
+    if len(performance_data) < 2:
+        return
+    
+    df = pd.DataFrame(performance_data)
+    
+    # Create dual-axis chart
+    fig = go.Figure()
+    
+    # Pages crawled over time
+    fig.add_trace(go.Scatter(
+        x=df['time'],
+        y=df['visited'],
+        mode='lines+markers',
+        name='Pages Visited',
+        line=dict(color='#1f77b4', width=3),
+        yaxis='y'
+    ))
+    
+    # Success rate over time
+    fig.add_trace(go.Scatter(
+        x=df['time'],
+        y=df['success_rate'],
+        mode='lines+markers',
+        name='Success Rate (%)',
+        line=dict(color='#ff7f0e', width=2),
+        yaxis='y2'
+    ))
+    
+    # Layout with dual y-axes
+    fig.update_layout(
+        title="Real-time Crawling Performance",
+        xaxis_title="Time (seconds)",
+        yaxis=dict(
+            title="Pages Visited",
+            side="left"
+        ),
+        yaxis2=dict(
+            title="Success Rate (%)",
+            side="right",
+            overlaying="y",
+            range=[0, 100]
+        ),
+        height=300,
+        showlegend=True,
+        margin=dict(l=50, r=50, t=50, b=50)
+    )
+    
+    chart_placeholder.plotly_chart(fig, use_container_width=True)
+
 def check_openai_key():
     """Check if OpenAI API key is available"""
     api_key = os.getenv("OPENAI_API_KEY")
@@ -77,19 +128,97 @@ def crawl_website(url, max_pages, delay):
     else:
         st.info(f"📊 Website has approximately {estimated_total} pages. You'll crawl up to {max_pages} pages (potentially 100% coverage)")
     
-    # Progress tracking
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    # Interactive Progress tracking with metrics
+    progress_container = st.container()
     
-    def progress_callback(visited, extracted):
+    with progress_container:
+        st.markdown("### 🚀 Crawling Progress")
+        
+        # Progress bar with custom styling
+        progress_bar = st.progress(0)
+        
+        # Real-time metrics in columns
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            visited_metric = st.metric("Pages Visited", "0")
+        with col2:
+            extracted_metric = st.metric("Content Extracted", "0")
+        with col3:
+            success_rate_metric = st.metric("Success Rate", "0%")
+        with col4:
+            eta_metric = st.metric("Est. Time Left", "Calculating...")
+        
+        # Status and current page display
+        status_container = st.container()
+        with status_container:
+            current_page_text = st.empty()
+            detailed_status = st.empty()
+        
+        # Performance chart placeholder
+        chart_placeholder = st.empty()
+    
+    # Track crawling performance
+    crawl_start_time = time.time()
+    performance_data = []
+    
+    def progress_callback(visited, extracted, current_url=None, page_title=None):
+        current_time = time.time()
+        elapsed_time = current_time - crawl_start_time
+        
+        # Update progress bar
         progress = min(visited / max_pages, 1.0)
         progress_bar.progress(progress)
-        status_text.text(f"Crawling... Visited: {visited}, Extracted: {extracted} pages")
+        
+        # Calculate metrics
+        success_rate = (extracted / visited * 100) if visited > 0 else 0
+        pages_per_minute = (visited / elapsed_time * 60) if elapsed_time > 0 else 0
+        
+        # Estimate time remaining
+        if pages_per_minute > 0 and visited < max_pages:
+            remaining_pages = max_pages - visited
+            eta_seconds = remaining_pages / pages_per_minute * 60
+            eta_text = f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s"
+        else:
+            eta_text = "Almost done!"
+        
+        # Update metrics
+        visited_metric.metric("Pages Visited", f"{visited}/{max_pages}")
+        extracted_metric.metric("Content Extracted", str(extracted))
+        success_rate_metric.metric("Success Rate", f"{success_rate:.1f}%")
+        eta_metric.metric("Est. Time Left", eta_text)
+        
+        # Update status text with current page details
+        if current_url and page_title:
+            # Truncate long URLs and titles for display
+            display_url = current_url if len(current_url) <= 60 else current_url[:57] + "..."
+            display_title = page_title if len(page_title) <= 50 else page_title[:47] + "..."
+            
+            current_page_text.markdown(f"**Currently crawling:** {display_title}")
+            detailed_status.markdown(f"🔗 **URL:** {display_url}")
+        else:
+            current_page_text.markdown(f"**Processing:** Page {visited}")
+            detailed_status.markdown(f"⏱️ **Elapsed:** {int(elapsed_time)}s | 📈 **Speed:** {pages_per_minute:.1f} pages/min")
+        
+        # Store performance data for chart
+        performance_data.append({
+            'time': elapsed_time,
+            'visited': visited,
+            'extracted': extracted,
+            'success_rate': success_rate
+        })
+        
+        # Update performance chart every 5 pages
+        if len(performance_data) > 1 and visited % 5 == 0:
+            update_progress_chart(chart_placeholder, performance_data)
     
     try:
         content = crawler.crawl_website(url, progress_callback)
         progress_bar.progress(1.0)
-        status_text.text(f"✅ Crawling completed! Extracted {len(content)} pages")
+        
+        # Final completion message
+        current_page_text.markdown("**✅ Crawling completed successfully!**")
+        detailed_status.markdown(f"🎉 **Final Result:** Extracted {len(content)} pages with content")
         
         # Save cache
         cache_file = crawler.save_cache()

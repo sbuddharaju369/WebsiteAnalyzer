@@ -115,6 +115,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 15, 2025: Added user-friendly cache file naming with readable timestamps
 - June 15, 2025: Added comprehensive reliability improvement guide and search vs question explanation
 - June 15, 2025: Implemented website coverage percentage feature with sitemap-based estimation and removed unnecessary UI elements
+- June 15, 2025: Added interactive progress bar with real-time metrics, performance charts, and detailed crawling status
 
 ## Recent Changes
 
