@@ -3,7 +3,7 @@ import time
 import os
 from datetime import datetime, timedelta
 from scraper import VerizonScraper
-from chroma_engine_fixed import ChromaRAGEngine
+from chroma_engine_simple import ChromaRAGEngine
 from utils import save_scraped_data, load_scraped_data
 from testing_utils import AccuracyTester, create_verification_report
 from database_simple import DatabaseManager
@@ -236,9 +236,10 @@ def main():
             
             if st.button("🔍 Search PostgreSQL"):
                 try:
+                    category_value = db_category_filter if db_category_filter != "All" else ""
                     search_results = st.session_state.db_manager.search_plans(
                         db_search_term, 
-                        db_category_filter if db_category_filter != "All" else None
+                        category_value
                     )
                     st.session_state.db_search_results = search_results
                     st.success(f"Found {len(search_results)} matching plans in PostgreSQL")

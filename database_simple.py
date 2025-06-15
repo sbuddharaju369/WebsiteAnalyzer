@@ -311,7 +311,7 @@ class DatabaseManager:
             print(f"Error getting database stats: {e}")
             return {}
     
-    def search_plans(self, search_term: str, category: str = None) -> List[Dict[str, Any]]:
+    def search_plans(self, search_term: str, category: str = "") -> List[Dict[str, Any]]:
         """Search plans by content or title"""
         if not self.connection:
             return []
@@ -321,7 +321,7 @@ class DatabaseManager:
             
             search_filter = f"%{search_term.lower()}%"
             
-            if category:
+            if category and category.strip():
                 cursor.execute("""
                     SELECT id, title, content, price, features, url, category, scraped_at
                     FROM verizon_plans 
