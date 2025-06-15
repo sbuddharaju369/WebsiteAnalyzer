@@ -1,0 +1,90 @@
+# Verizon Plan Assistant
+
+## Overview
+
+This is a Streamlit-based web application that serves as an intelligent assistant for Verizon telecommunications plans. The application uses web scraping to gather current plan information from Verizon's website and implements a Retrieval-Augmented Generation (RAG) system powered by OpenAI's GPT models to provide intelligent responses to user queries about Verizon plans.
+
+## System Architecture
+
+The application follows a modular architecture with clear separation of concerns:
+
+1. **Frontend**: Streamlit-based web interface for user interaction
+2. **Data Collection**: Web scraping module for gathering plan information
+3. **AI/RAG Engine**: OpenAI-powered question-answering system with vector search
+4. **Data Storage**: File-based JSON storage for scraped data
+5. **Deployment**: Configured for Replit's autoscale deployment
+
+## Key Components
+
+### 1. Web Scraping (`scraper.py`)
+- **Purpose**: Extracts current plan information from Verizon's website
+- **Technology**: Beautiful Soup, Trafilatura, Requests
+- **Features**: 
+  - Rate-limited requests to respect website policies
+  - Multiple plan categories (mobile, internet, prepaid, bundles)
+  - Content extraction and cleaning
+- **Architecture Decision**: Chose trafilatura for robust content extraction over basic BeautifulSoup parsing to handle dynamic content better
+
+### 2. RAG Engine (`rag_engine.py`)
+- **Purpose**: Provides intelligent question-answering using scraped data
+- **Technology**: OpenAI GPT models, FAISS vector database, text embeddings
+- **Features**:
+  - Text chunking with overlap for better context preservation
+  - Vector similarity search for relevant information retrieval
+  - Context-aware response generation
+- **Architecture Decision**: Used FAISS for local vector storage instead of cloud solutions to maintain data privacy and reduce external dependencies
+
+### 3. Streamlit Frontend (`app.py`)
+- **Purpose**: User interface for interacting with the system
+- **Features**:
+  - Real-time data scraping capabilities
+  - Interactive chat interface
+  - Session state management
+  - Data freshness indicators
+- **Architecture Decision**: Chose Streamlit for rapid prototyping and built-in session management over more complex frameworks
+
+### 4. Utility Functions (`utils.py`)
+- **Purpose**: Data persistence and text processing utilities
+- **Features**:
+  - JSON-based data storage with metadata
+  - Text cleaning and preprocessing
+  - File I/O operations with error handling
+
+## Data Flow
+
+1. **Data Collection**: Scraper fetches plan information from Verizon's website
+2. **Data Processing**: Raw HTML content is cleaned and structured
+3. **Storage**: Processed data is saved to JSON files with timestamps
+4. **Indexing**: RAG engine chunks text and creates vector embeddings
+5. **Query Processing**: User questions are embedded and matched against stored data
+6. **Response Generation**: Relevant context is provided to OpenAI for answer generation
+
+## External Dependencies
+
+### Core Dependencies
+- **OpenAI API**: For text embeddings and chat completions
+- **Streamlit**: Web framework for the user interface
+- **FAISS**: Vector similarity search engine
+- **Beautiful Soup**: HTML parsing and web scraping
+- **Trafilatura**: Content extraction from web pages
+- **Requests**: HTTP client for web scraping
+
+### Environment Requirements
+- **Python 3.11+**: Runtime environment
+- **OpenAI API Key**: Required environment variable for AI functionality
+
+## Deployment Strategy
+
+- **Platform**: Replit with autoscale deployment
+- **Configuration**: Uses .replit file for deployment settings
+- **Port**: Configured to run on port 5000
+- **Runtime**: Python 3.11 with Nix package management
+- **Scalability**: Autoscale deployment handles traffic variations
+
+## Changelog
+
+- June 15, 2025. Initial setup
+
+## User Preferences
+
+Preferred communication style: Simple, everyday language.
