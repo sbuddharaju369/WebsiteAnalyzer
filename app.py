@@ -6,6 +6,7 @@ from scraper import VerizonScraper
 from rag_engine import RAGEngine
 from utils import save_scraped_data, load_scraped_data
 from testing_utils import AccuracyTester, create_verification_report
+from database import DatabaseManager, test_connection
 
 # Page configuration
 st.set_page_config(
