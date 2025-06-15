@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from scraper import VerizonScraper
 from rag_engine import RAGEngine
 from utils import save_scraped_data, load_scraped_data
+from testing_utils import AccuracyTester, create_verification_report
 
 # Page configuration
 st.set_page_config(
@@ -199,6 +200,41 @@ def main():
                     st.markdown("### 🤖 AI Assistant Response")
                     st.markdown(response['answer'])
                     
+                    # Accuracy verification section
+                    st.markdown("### 🔍 Response Verification")
+                    col1, col2 = st.columns([1, 1])
+                    
+                    with col1:
+                        if st.button("🧪 Test Accuracy", help="Verify response against source data"):
+                            with st.spinner("Verifying response accuracy..."):
+                                verification_report = create_verification_report(
+                                    st.session_state.scraped_data,
+                                    user_question,
+                                    response['answer'],
+                                    response.get('sources', [])
+                                )
+                                st.session_state.verification_report = verification_report
+                    
+                    with col2:
+                        if st.button("📋 Generate Test Questions", help="Get suggested test questions"):
+                            tester = AccuracyTester(st.session_state.scraped_data)
+                            test_questions = tester.generate_test_questions()
+                            st.session_state.test_questions = test_questions
+                    
+                    # Display verification report if available
+                    if hasattr(st.session_state, 'verification_report'):
+                        with st.expander("📊 Accuracy Report", expanded=True):
+                            st.markdown(st.session_state.verification_report)
+                    
+                    # Display test questions if available
+                    if hasattr(st.session_state, 'test_questions'):
+                        with st.expander("🎯 Suggested Test Questions"):
+                            st.markdown("**Try these questions to test the system:**")
+                            for i, q in enumerate(st.session_state.test_questions, 1):
+                                if st.button(f"{i}. {q}", key=f"test_q_{i}"):
+                                    st.session_state.user_question = q
+                                    st.rerun()
+                    
                     # Show sources if available
                     if response.get('sources'):
                         with st.expander("📚 Sources"):
@@ -208,6 +244,7 @@ def main():
                                 st.markdown(f"- **Title:** {source.get('title', 'N/A')}")
                                 if source.get('url'):
                                     st.markdown(f"- **URL:** {source['url']}")
+                                st.markdown(f"- **Similarity Score:** {source.get('similarity_score', 0):.3f}")
                                 st.markdown(f"- **Content:** {source.get('content', 'N/A')[:200]}...")
                                 st.markdown("---")
                     
