@@ -109,6 +109,30 @@ The application follows a modular architecture with clear separation of concerns
 - June 15, 2025: Implemented accuracy testing framework for response validation
 - June 15, 2025: Added database search, query history, and performance tracking features
 - June 15, 2025: Migrated from FAISS to ChromaDB for enhanced vector database capabilities
+- June 15, 2025: Major UI/UX improvements: Content Overview moved to sidebar, full-width question interface, side-by-side analytics charts
+- June 15, 2025: Enhanced confidence scoring with user-friendly reliability indicators and explanations
+- June 15, 2025: Improved network visualization with better node spacing, color coding, and interactive features
+- June 15, 2025: Added user-friendly cache file naming with readable timestamps
+- June 15, 2025: Added comprehensive reliability improvement guide and search vs question explanation
+
+## Recent Changes
+
+### UI/UX Enhancements (June 15, 2025)
+- **Layout Optimization**: Moved Content Overview to sidebar for full-width main interface
+- **Analytics Improvements**: Content analytics charts now display side-by-side for better space utilization
+- **Network Visualization**: Redesigned relationship graph with cleaner node layout, semantic color coding, and reduced clutter (limited to 15 nodes)
+- **Cache Management**: Cache files now display with human-readable timestamps (e.g., "verizon.com - June 15, 2025 at 5:26 PM (47 pages)")
+
+### User Experience Improvements
+- **Confidence Scoring**: Replaced technical percentages with intuitive reliability indicators (Very Reliable, Mostly Reliable, etc.)
+- **Source Attribution**: Enhanced source display with relevance color coding and clearer explanations
+- **Search vs Questions**: Added clear explanation of the difference between AI-powered questions and semantic search
+- **Reliability Guide**: Comprehensive section on improving answer quality with specific recommendations
+
+### Technical Enhancements
+- **Confidence Algorithm**: Fixed negative confidence scores by implementing robust similarity calculations with proper bounds
+- **Source Deduplication**: Eliminated duplicate sources by grouping results by URL and keeping highest relevance scores
+- **Visual Clarity**: Enhanced all user-facing metrics with descriptive labels and contextual help
 
 ## User Preferences
 
