@@ -346,29 +346,63 @@ def main():
                     st.markdown("### 🤖 Analysis Result")
                     st.markdown(result['answer'])
                     
-                    # Confidence indicator
+                    # User-friendly confidence indicator
                     confidence = result.get('confidence', 0)
-                    if confidence > 0.8:
-                        confidence_color = "green"
-                        confidence_text = "High"
-                    elif confidence > 0.6:
-                        confidence_color = "orange"
-                        confidence_text = "Medium"
-                    else:
-                        confidence_color = "red"
-                        confidence_text = "Low"
                     
-                    st.markdown(f"**Confidence:** :{confidence_color}[{confidence_text} ({confidence:.1%})]")
+                    if confidence >= 0.8:
+                        confidence_emoji = "🟢"
+                        confidence_text = "Very Reliable"
+                        confidence_desc = "High quality sources with strong relevance"
+                    elif confidence >= 0.6:
+                        confidence_emoji = "🟡" 
+                        confidence_text = "Mostly Reliable"
+                        confidence_desc = "Good sources with decent relevance"
+                    elif confidence >= 0.4:
+                        confidence_emoji = "🟠"
+                        confidence_text = "Somewhat Reliable"
+                        confidence_desc = "Some relevant information found"
+                    else:
+                        confidence_emoji = "🔴"
+                        confidence_text = "Limited Reliability"
+                        confidence_desc = "Limited relevant information available"
+                    
+                    col_conf, col_info = st.columns([3, 1])
+                    with col_conf:
+                        st.markdown(f"**Answer Quality:** {confidence_emoji} {confidence_text}")
+                        st.caption(confidence_desc)
+                    with col_info:
+                        with st.expander("ℹ️ About Quality"):
+                            st.markdown("""
+                            **Quality scoring is based on:**
+                            - How well the content matches your question
+                            - Number of relevant sources found
+                            - Content overlap and consistency
+                            
+                            Higher scores mean the answer is more reliable and well-supported by the website content.
+                            """)
                     
                     # Sources
                     if result.get('sources'):
-                        with st.expander(f"📚 Sources ({len(result['sources'])} pages)"):
+                        with st.expander(f"📚 Sources ({len(result['sources'])} unique pages)"):
+                            st.caption("Each source shows how well that page content matches your question")
                             for i, source in enumerate(result['sources'][:5], 1):
                                 similarity = source.get('similarity_score', 0)
+                                
+                                # Color code relevance
+                                if similarity >= 0.7:
+                                    relevance_icon = "🟢"
+                                    relevance_text = "Highly Relevant"
+                                elif similarity >= 0.5:
+                                    relevance_icon = "🟡"
+                                    relevance_text = "Moderately Relevant"
+                                else:
+                                    relevance_icon = "🟠"
+                                    relevance_text = "Somewhat Relevant"
+                                
                                 st.markdown(f"""
                                 **{i}. {source.get('title', 'Untitled')}**  
                                 🔗 [{source.get('url', 'No URL')}]({source.get('url', '#')})  
-                                📊 Relevance: {similarity:.1%}
+                                {relevance_icon} {relevance_text} ({similarity:.1%})
                                 """)
         
         with col2:

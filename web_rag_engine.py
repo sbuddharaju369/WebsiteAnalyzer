@@ -268,11 +268,14 @@ class WebRAGEngine:
                         metadata = results['metadatas'][0][i] if results.get('metadatas') else {}
                         distance = results['distances'][0][i] if results.get('distances') else 0.5
                         
+                        # Fix similarity score calculation - ensure it's between 0 and 1
+                        similarity = max(0.0, min(1.0, 1.0 - distance)) if distance <= 2.0 else max(0.1, 1.0 / (1.0 + distance))
+                        
                         result = {
                             'id': results['ids'][0][i],
                             'content': results['documents'][0][i],
                             'metadata': metadata,
-                            'similarity_score': 1.0 - distance,
+                            'similarity_score': similarity,
                             'url': metadata.get('url', ''),
                             'title': metadata.get('title', 'Untitled'),
                             'domain': metadata.get('domain', ''),
@@ -317,9 +320,21 @@ class WebRAGEngine:
             
             context = '\n---\n'.join(context_parts)
             
-            # Calculate confidence based on similarity scores
-            avg_similarity = sum(s['similarity_score'] for s in sources) / len(sources)
-            confidence = min(avg_similarity * 1.2, 1.0)  # Boost confidence slightly
+            # Deduplicate sources by URL and keep the highest relevance
+            unique_sources = {}
+            for source in sources:
+                url = source['url']
+                if url not in unique_sources or source['similarity_score'] > unique_sources[url]['similarity_score']:
+                    unique_sources[url] = source
+            
+            sources = list(unique_sources.values())[:5]  # Limit to 5 unique sources
+            
+            # Calculate confidence with better scoring
+            if sources:
+                avg_similarity = sum(max(0, s['similarity_score']) for s in sources) / len(sources)
+                confidence = min(max(avg_similarity, 0.1), 0.95)  # Keep between 10% and 95%
+            else:
+                confidence = 0.1
             
             # Generate analysis using OpenAI
             system_prompt = f"""You are an expert content analyst. Analyze the provided web content to answer questions accurately and comprehensively.
