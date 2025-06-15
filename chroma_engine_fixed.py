@@ -15,12 +15,8 @@ class ChromaRAGEngine:
         
         self.client = OpenAI(api_key=api_key)
         
-        # Initialize ChromaDB
-        self.chroma_client = chromadb.Client(Settings(
-            anonymized_telemetry=False,
-            is_persistent=True,
-            persist_directory="./chroma_db"
-        ))
+        # Initialize ChromaDB with simpler settings
+        self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
         
         # Create or get collection
         self.collection_name = collection_name
@@ -32,13 +28,23 @@ class ChromaRAGEngine:
     def _get_or_create_collection(self):
         """Get or create ChromaDB collection"""
         try:
-            return self.chroma_client.get_collection(self.collection_name)
-        except ValueError:
-            # Collection doesn't exist, create it
+            # Try to delete existing collection and create fresh
+            try:
+                self.chroma_client.delete_collection(self.collection_name)
+            except:
+                pass  # Collection might not exist
+            
             return self.chroma_client.create_collection(
                 name=self.collection_name,
                 metadata={"description": "Verizon plan data for RAG"}
             )
+        except Exception as e:
+            print(f"Error creating collection: {e}")
+            # If creation fails, try to get existing
+            try:
+                return self.chroma_client.get_collection(self.collection_name)
+            except:
+                raise ValueError(f"Cannot create or access collection: {e}")
     
     def _get_embedding(self, text: str) -> List[float]:
         """Get embedding for text using OpenAI"""
@@ -52,31 +58,30 @@ class ChromaRAGEngine:
             print(f"Error getting embedding: {str(e)}")
             return []
     
-    def _chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
+    def _chunk_text(self, text: str, chunk_size: int = 400, overlap: int = 50) -> List[str]:
         """Split text into overlapping chunks"""
         if not text or len(text.strip()) < chunk_size:
-            return [text]
+            return [text] if text.strip() else []
         
         chunks = []
         start = 0
         
         while start < len(text):
-            end = start + chunk_size
+            end = min(start + chunk_size, len(text))
             
             # Try to end at a sentence boundary
             if end < len(text):
                 sentence_ends = ['.', '!', '?', '\n']
                 for i in range(end, max(start + chunk_size - 100, start), -1):
-                    if text[i] in sentence_ends and i < len(text) - 1:
+                    if i < len(text) and text[i] in sentence_ends:
                         end = i + 1
                         break
             
             chunk = text[start:end].strip()
-            if chunk:
+            if chunk and len(chunk) > 20:
                 chunks.append(chunk)
             
             start = end - overlap
-            
             if start >= len(text):
                 break
         
@@ -86,7 +91,10 @@ class ChromaRAGEngine:
         """Clear all data from the collection"""
         try:
             self.chroma_client.delete_collection(self.collection_name)
-            self.collection = self._get_or_create_collection()
+            self.collection = self.chroma_client.create_collection(
+                name=self.collection_name,
+                metadata={"description": "Verizon plan data for RAG"}
+            )
             print("Collection cleared successfully")
         except Exception as e:
             print(f"Error clearing collection: {str(e)}")
@@ -100,7 +108,6 @@ class ChromaRAGEngine:
         
         doc_ids = []
         doc_texts = []
-        doc_embeddings = []
         doc_metadatas = []
         
         for doc_idx, doc in enumerate(documents):
@@ -108,56 +115,62 @@ class ChromaRAGEngine:
                 # Create text content for embedding
                 content_parts = []
                 
-                if doc.get('title'):
-                    content_parts.append(f"Title: {doc['title']}")
+                title = doc.get('title', '').strip()
+                category = doc.get('category', '').strip()
+                price = doc.get('price', '').strip()
+                features = doc.get('features', [])
+                content = doc.get('content', '').strip()
+                url = doc.get('url', '').strip()
                 
-                if doc.get('category'):
-                    content_parts.append(f"Category: {doc['category']}")
+                if title:
+                    content_parts.append(f"Title: {title}")
                 
-                if doc.get('price'):
-                    content_parts.append(f"Price: {doc['price']}")
+                if category:
+                    content_parts.append(f"Category: {category}")
                 
-                if doc.get('features'):
-                    features_text = ', '.join(doc['features']) if isinstance(doc['features'], list) else str(doc['features'])
+                if price:
+                    content_parts.append(f"Price: {price}")
+                
+                if features:
+                    if isinstance(features, list):
+                        features_text = ', '.join(str(f) for f in features)
+                    else:
+                        features_text = str(features)
                     content_parts.append(f"Features: {features_text}")
                 
-                if doc.get('content'):
-                    content_parts.append(f"Details: {doc['content']}")
+                if content:
+                    content_parts.append(f"Details: {content}")
                 
                 full_text = '\n'.join(content_parts)
+                
+                if not full_text.strip():
+                    continue
                 
                 # Chunk the text
                 chunks = self._chunk_text(full_text)
                 
                 for chunk_idx, chunk in enumerate(chunks):
-                    if len(chunk.strip()) > 20:  # Only process meaningful chunks
+                    if len(chunk.strip()) > 20:
                         # Create unique ID
                         doc_id = f"doc_{doc_idx}_chunk_{chunk_idx}"
                         
-                        # Get embedding
-                        embedding = self._get_embedding(chunk)
-                        if not embedding:  # Skip if embedding failed
-                            continue
-                        
-                        # Prepare metadata
-                        features = doc.get('features', [])
-                        features_str = json.dumps(features) if isinstance(features, list) else str(features)
-                        
+                        # Prepare simple metadata (avoid complex JSON)
                         metadata = {
-                            'title': doc.get('title', ''),
-                            'category': doc.get('category', ''),
-                            'price': doc.get('price', ''),
-                            'features': features_str,
-                            'url': doc.get('url', ''),
-                            'full_content': doc.get('content', ''),
-                            'chunk_index': chunk_idx,
-                            'doc_index': doc_idx,
-                            'scraped_at': doc.get('scraped_at', datetime.now().isoformat())
+                            'title': title,
+                            'category': category,
+                            'price': price,
+                            'url': url,
+                            'chunk_index': str(chunk_idx),
+                            'doc_index': str(doc_idx)
                         }
+                        
+                        # Add features as separate fields to avoid JSON issues
+                        if isinstance(features, list) and features:
+                            for i, feature in enumerate(features[:5]):  # Limit to 5 features
+                                metadata[f'feature_{i}'] = str(feature)
                         
                         doc_ids.append(doc_id)
                         doc_texts.append(chunk)
-                        doc_embeddings.append(embedding)
                         doc_metadatas.append(metadata)
                         
             except Exception as e:
@@ -166,10 +179,9 @@ class ChromaRAGEngine:
         
         if doc_ids:
             try:
-                # Add to ChromaDB
+                # Add to ChromaDB without custom embeddings (let ChromaDB handle it)
                 self.collection.add(
                     ids=doc_ids,
-                    embeddings=doc_embeddings,
                     documents=doc_texts,
                     metadatas=doc_metadatas
                 )
@@ -179,94 +191,60 @@ class ChromaRAGEngine:
         else:
             print("No documents were processed successfully")
     
-    def search_by_metadata(self, filters: Dict[str, Any], limit: int = 10) -> List[Dict[str, Any]]:
-        """Search documents by metadata filters"""
-        try:
-            # Convert filters to ChromaDB where clause format
-            where_clause = {}
-            for key, value in filters.items():
-                if value and value != "all":
-                    where_clause[key] = value
-            
-            if not where_clause:
-                # No filters, get all documents
-                results = self.collection.get(limit=limit)
-            else:
-                results = self.collection.get(
-                    where=where_clause,
-                    limit=limit
-                )
-            
-            # Format results
-            formatted_results = []
-            if results and results['ids']:
-                for i in range(len(results['ids'])):
-                    result = {
-                        'id': results['ids'][i],
-                        'content': results['documents'][i] if results['documents'] else '',
-                        'metadata': results['metadatas'][i] if results['metadatas'] else {}
-                    }
-                    formatted_results.append(result)
-            
-            return formatted_results
-            
-        except Exception as e:
-            print(f"Error searching by metadata: {str(e)}")
-            return []
-    
     def search_similar(self, query: str, filters: Dict[str, Any] = None, k: int = 5) -> List[Dict[str, Any]]:
         """Search for similar documents using semantic similarity"""
         try:
-            # Get query embedding
-            query_embedding = self._get_embedding(query)
-            if not query_embedding:
-                return []
-            
             # Prepare where clause for filtering
-            where_clause = None
+            where_clause = {}
             if filters:
-                where_clause = {}
                 for key, value in filters.items():
-                    if value and value != "all":
+                    if value and value != "all" and value != "":
                         where_clause[key] = value
             
             # Search in ChromaDB
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=k,
-                where=where_clause,
-                include=['documents', 'metadatas', 'distances']
-            )
+            search_kwargs = {
+                "query_texts": [query],
+                "n_results": min(k, 50),
+                "include": ['documents', 'metadatas', 'distances']
+            }
+            
+            if where_clause:
+                search_kwargs["where"] = where_clause
+            
+            results = self.collection.query(**search_kwargs)
             
             # Format results
             formatted_results = []
-            if results and results['ids'] and results['ids'][0]:
+            if results and results.get('ids') and results['ids'][0]:
                 for i in range(len(results['ids'][0])):
-                    # Convert distance to similarity score (ChromaDB returns distances)
-                    distance = results['distances'][0][i] if results['distances'] else 1.0
-                    similarity_score = 1.0 / (1.0 + distance)  # Convert distance to similarity
-                    
-                    metadata = results['metadatas'][0][i] if results['metadatas'] else {}
-                    
-                    # Parse features safely
-                    features_data = metadata.get('features', '[]')
                     try:
-                        features = json.loads(features_data) if features_data else []
-                    except (json.JSONDecodeError, TypeError):
+                        # Convert distance to similarity score
+                        distance = results['distances'][0][i] if results.get('distances') else 1.0
+                        similarity_score = max(0, 1.0 - distance)  # Simple conversion
+                        
+                        metadata = results['metadatas'][0][i] if results.get('metadatas') else {}
+                        
+                        # Reconstruct features from metadata
                         features = []
-                    
-                    result = {
-                        'content': results['documents'][0][i] if results['documents'] else '',
-                        'title': metadata.get('title', ''),
-                        'category': metadata.get('category', ''),
-                        'price': metadata.get('price', ''),
-                        'features': features,
-                        'url': metadata.get('url', ''),
-                        'full_content': metadata.get('full_content', ''),
-                        'similarity_score': similarity_score,
-                        'distance': distance
-                    }
-                    formatted_results.append(result)
+                        for j in range(5):
+                            feature_key = f'feature_{j}'
+                            if feature_key in metadata:
+                                features.append(metadata[feature_key])
+                        
+                        result = {
+                            'content': results['documents'][0][i] if results.get('documents') else '',
+                            'title': metadata.get('title', ''),
+                            'category': metadata.get('category', ''),
+                            'price': metadata.get('price', ''),
+                            'features': features,
+                            'url': metadata.get('url', ''),
+                            'similarity_score': similarity_score,
+                            'distance': distance
+                        }
+                        formatted_results.append(result)
+                    except Exception as e:
+                        print(f"Error formatting result {i}: {e}")
+                        continue
             
             return formatted_results
             
@@ -298,10 +276,9 @@ class ChromaRAGEngine:
                 if doc.get('price'):
                     context_parts.append(f"Price: {doc['price']}")
                 if doc.get('features'):
-                    features = doc['features'] if isinstance(doc['features'], list) else [doc['features']]
-                    context_parts.append(f"Features: {', '.join(features)}")
+                    context_parts.append(f"Features: {', '.join(doc['features'])}")
                 context_parts.append(f"Details: {doc['content']}")
-                context_parts.append("")  # Empty line for separation
+                context_parts.append("")
                 
                 # Add to sources
                 sources.append({
@@ -358,6 +335,7 @@ Please provide a comprehensive answer based on the context above. Include specif
             }
             
         except Exception as e:
+            print(f"Error in query: {e}")
             return {
                 'answer': f"Sorry, I encountered an error while processing your question: {str(e)}",
                 'sources': []
@@ -369,10 +347,10 @@ Please provide a comprehensive answer based on the context above. Include specif
             count = self.collection.count()
             
             # Get sample of metadata to analyze categories
-            sample_results = self.collection.get(limit=1000)
+            sample_results = self.collection.get(limit=min(count, 100))
             categories = {}
             
-            if sample_results and sample_results['metadatas']:
+            if sample_results and sample_results.get('metadatas'):
                 for metadata in sample_results['metadatas']:
                     category = metadata.get('category', 'unknown')
                     categories[category] = categories.get(category, 0) + 1
@@ -386,15 +364,6 @@ Please provide a comprehensive answer based on the context above. Include specif
         except Exception as e:
             print(f"Error getting collection stats: {str(e)}")
             return {}
-    
-    def search_by_text(self, search_term: str, category: str = None, limit: int = 10) -> List[Dict[str, Any]]:
-        """Search documents by text content with optional category filter"""
-        filters = {}
-        if category and category != "all":
-            filters['category'] = category
-        
-        # Use semantic search for better results
-        return self.search_similar(search_term, filters, k=limit)
     
     def get_query_history(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent query history"""

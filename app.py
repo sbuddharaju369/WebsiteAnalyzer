@@ -3,7 +3,7 @@ import time
 import os
 from datetime import datetime, timedelta
 from scraper import VerizonScraper
-from chroma_engine import ChromaRAGEngine
+from chroma_engine_fixed import ChromaRAGEngine
 from utils import save_scraped_data, load_scraped_data
 from testing_utils import AccuracyTester, create_verification_report
 from database_simple import DatabaseManager

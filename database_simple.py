@@ -92,6 +92,9 @@ class DatabaseManager:
             
             # Insert new plans
             for plan in plans_data:
+                features = plan.get('features', [])
+                features_json = json.dumps(features) if isinstance(features, list) else json.dumps([])
+                
                 cursor.execute("""
                     INSERT INTO verizon_plans (title, content, price, features, url, category, scraped_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -99,7 +102,7 @@ class DatabaseManager:
                     plan.get('title', ''),
                     plan.get('content', ''),
                     plan.get('price', ''),
-                    json.dumps(plan.get('features', [])),
+                    features_json,
                     plan.get('url', ''),
                     plan.get('category', 'unknown'),
                     datetime.utcnow()
