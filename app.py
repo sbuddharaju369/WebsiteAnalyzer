@@ -134,14 +134,28 @@ def crawl_website(url, max_pages, delay):
     
     # Estimate total pages before crawling
     with st.spinner("Analyzing website structure..."):
-        estimated_total = crawler.estimate_total_pages(url)
-        crawler.estimated_total_pages = estimated_total
-    
-    # Show estimation to user
-    if estimated_total > max_pages:
-        st.info(f"📊 Website has approximately {estimated_total} pages. You'll crawl {max_pages} pages ({(max_pages/estimated_total)*100:.1f}% coverage)")
+        estimation_result = crawler.estimate_total_pages(url)
+        
+    # Show estimation to user with proper source attribution
+    if estimation_result['total_pages'] is not None:
+        estimated_total = estimation_result['total_pages']
+        source_info = {
+            'sitemap': f"Based on website sitemap analysis: {estimation_result['details']}",
+            'third_party': f"Estimated using {estimation_result.get('service_name', 'third-party service')}: {estimation_result['details']}"
+        }.get(estimation_result['source'], estimation_result['details'])
+        
+        if estimated_total > max_pages:
+            st.info(f"📊 Website has {estimated_total} pages. You'll crawl {max_pages} pages ({(max_pages/estimated_total)*100:.1f}% coverage)")
+        else:
+            st.info(f"📊 Website has {estimated_total} pages. You'll crawl up to {max_pages} pages (potentially 100% coverage)")
+        st.caption(source_info)
+        
+        # Store estimation data for later use
+        crawler.estimation_result = estimation_result
     else:
-        st.info(f"📊 Website has approximately {estimated_total} pages. You'll crawl up to {max_pages} pages (potentially 100% coverage)")
+        st.warning(f"⚠️ {estimation_result['details']}")
+        st.caption("Coverage percentage cannot be calculated without reliable website size information")
+        crawler.estimation_result = estimation_result
     
     # Interactive Progress tracking with metrics
     progress_container = st.container()
@@ -171,37 +185,27 @@ def crawl_website(url, max_pages, delay):
     crawl_start_time = time.time()
     performance_data = []
     
-    def progress_callback(visited, extracted, current_url=None, page_title=None, estimated_total=None, discovered_count=None):
+    def progress_callback(visited, extracted, current_url=None, page_title=None):
         current_time = time.time()
         elapsed_time = current_time - crawl_start_time
         
-        # Use dynamic estimation if available
-        effective_total = estimated_total if estimated_total else max_pages
-        dynamic_max = min(max_pages, effective_total)
-        
-        # Update progress bar based on dynamic estimation
-        progress = min(visited / dynamic_max, 1.0)
+        # Update progress bar based on max_pages limit
+        progress = min(visited / max_pages, 1.0)
         progress_bar.progress(progress)
         
         # Calculate metrics
         success_rate = (extracted / visited * 100) if visited > 0 else 0
         pages_per_minute = (visited / elapsed_time * 60) if elapsed_time > 0 else 0
         
-        # Estimate time remaining based on dynamic total
-        if pages_per_minute > 0 and visited < dynamic_max:
-            remaining_pages = dynamic_max - visited
+        # Estimate time remaining based on crawl limit
+        if pages_per_minute > 0 and visited < max_pages:
+            remaining_pages = max_pages - visited
             eta_seconds = remaining_pages / pages_per_minute * 60
             eta_text = f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s"
         else:
             eta_text = "Almost done!"
-        
-        # Update metrics with dynamic information
-        if discovered_count and discovered_count > max_pages:
-            visited_display = f"{visited}/{max_pages} (found {discovered_count})"
-        else:
-            visited_display = f"{visited}/{dynamic_max}"
             
-        visited_metric.metric("Pages Visited", visited_display)
+        visited_metric.metric("Pages Visited", f"{visited}/{max_pages}")
         extracted_metric.metric("Content Extracted", str(extracted))
         success_rate_metric.metric("Success Rate", f"{success_rate:.1f}%")
         eta_metric.metric("Time Left", eta_text)
@@ -510,23 +514,34 @@ def main():
                             crawler = WebCrawler()
                             if content:
                                 base_url = content[0]['url']
-                                estimated_total = crawler.estimate_total_pages(base_url)
-                                coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
+                                estimation_result = crawler.estimate_total_pages(base_url)
                                 
                                 # Calculate content statistics
                                 total_words = sum(page.get('word_count', 0) for page in content)
                                 avg_words = total_words / len(content) if content else 0
                                 
                                 # Store stats for display
-                                st.session_state.crawl_stats = {
+                                stats = {
                                     'total_pages': len(content),
                                     'total_words': total_words,
                                     'average_words_per_page': avg_words,
-                                    'estimated_total_pages': estimated_total,
-                                    'coverage_percentage': coverage_percentage,
                                     'domain': domain,
-                                    'source': 'cache'
+                                    'source': 'cache',
+                                    'estimation_result': estimation_result
                                 }
+                                
+                                # Only calculate coverage if we have reliable website size data
+                                if estimation_result['total_pages'] is not None:
+                                    estimated_total = estimation_result['total_pages']
+                                    coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
+                                    stats.update({
+                                        'estimated_total_pages': estimated_total,
+                                        'coverage_percentage': coverage_percentage,
+                                        'size_source': estimation_result['source'],
+                                        'size_details': estimation_result['details']
+                                    })
+                                
+                                st.session_state.crawl_stats = stats
                             
                             # Initialize RAG engine
                             rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
@@ -552,7 +567,7 @@ def main():
                 st.metric("Total Words", f"{stats.get('total_words', 0):,}")
                 st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
                 
-                # Coverage percentage if available
+                # Coverage percentage if available with source attribution
                 if stats.get('coverage_percentage') is not None:
                     coverage = stats['coverage_percentage']
                     estimated_total = stats.get('estimated_total_pages', 0)
@@ -566,7 +581,28 @@ def main():
                         coverage_color = "red"
                     
                     st.markdown(f"**Website Coverage:** :{coverage_color}[{coverage:.1f}%]")
-                    st.caption(f"Crawled {stats['total_pages']} of ~{estimated_total} total pages")
+                    st.caption(f"Crawled {stats['total_pages']} of {estimated_total} total pages")
+                    
+                    # Show source of size estimation
+                    size_source = stats.get('size_source', 'unknown')
+                    if size_source == 'sitemap':
+                        st.caption(f"📋 Size based on website sitemap analysis")
+                    elif size_source == 'third_party':
+                        service_name = stats.get('size_details', '').split(':')[0] if ':' in stats.get('size_details', '') else 'third-party service'
+                        st.caption(f"🔍 Size estimated using {service_name}")
+                    
+                else:
+                    # Check if we have estimation result but no coverage
+                    estimation_result = stats.get('estimation_result', {})
+                    if estimation_result.get('source') == 'unavailable':
+                        st.markdown("**Website Coverage:** :gray[Cannot be calculated]")
+                        st.caption("⚠️ Website does not provide sitemap or reliable page count information")
+                    elif estimation_result.get('source') == 'error':
+                        st.markdown("**Website Coverage:** :gray[Cannot be calculated]")
+                        st.caption("❌ Error analyzing website structure")
+                    else:
+                        st.markdown("**Website Coverage:** :gray[Unknown]")
+                        st.caption("📊 Website size analysis incomplete")
             
             # Content summary
             if st.session_state.rag_engine:

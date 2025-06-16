@@ -121,6 +121,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 16, 2025: Optimized RAG responses for precision and conciseness with reduced token limits and focused prompts
 - June 16, 2025: Added user-configurable answer verbosity (Concise/Balanced/Comprehensive) with persistent session settings
 - June 16, 2025: Added website coverage calculation for cached content with real-time estimation and statistics
+- June 16, 2025: Implemented authoritative website size estimation using sitemaps and reliable sources with transparent data attribution
 
 ## Recent Changes
 

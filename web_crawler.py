@@ -152,24 +152,14 @@ class WebCrawler:
                 except Exception as e:
                     print(f"Error getting links from {current_url}: {e}")
             
-            # Update dynamic estimation based on discovered links
-            discovered_count = len(all_discovered_links)
-            if hasattr(self, 'estimated_total_pages') and discovered_count > self.estimated_total_pages:
-                # Update estimate but cap it at reasonable limits
-                self.estimated_total_pages = min(discovered_count, 2000)
-            
-            # Enhanced progress callback with current page info and updated estimate
+            # Enhanced progress callback with current page info
             if progress_callback:
                 page_title = content.get('title', 'Untitled') if content else 'Failed to load'
-                # Pass the dynamic estimate to the callback
-                estimated_total = getattr(self, 'estimated_total_pages', len(all_discovered_links))
                 progress_callback(
                     len(self.visited_urls), 
                     len(self.scraped_content),
                     current_url,
-                    page_title,
-                    estimated_total,
-                    discovered_count
+                    page_title
                 )
             
             # Rate limiting
@@ -223,8 +213,8 @@ class WebCrawler:
             print(f"Error loading cache: {e}")
             return []
     
-    def estimate_total_pages(self, start_url: str) -> int:
-        """Estimate total number of pages on the website"""
+    def estimate_total_pages(self, start_url: str) -> dict:
+        """Estimate total number of pages using authoritative sources"""
         import re
         try:
             from urllib.parse import urlparse, urljoin
@@ -232,76 +222,130 @@ class WebCrawler:
             # Get the base domain
             parsed_url = urlparse(start_url)
             base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            domain = parsed_url.netloc
             
-            # Check for sitemap first
-            sitemap_urls = ['/sitemap.xml', '/sitemap_index.xml', '/robots.txt']
+            # First, try to get comprehensive sitemap data
+            sitemap_data = self._analyze_sitemaps(base_url, domain)
+            if sitemap_data['found']:
+                return {
+                    'total_pages': sitemap_data['count'],
+                    'source': 'sitemap',
+                    'reliability': 'high',
+                    'details': sitemap_data['details']
+                }
             
-            for sitemap_path in sitemap_urls:
-                try:
-                    sitemap_url = urljoin(base_url, sitemap_path)
-                    response = self.session.get(sitemap_url, timeout=10)
+            # Try third-party service estimation (using built-in-browser for security)
+            # Note: In a production environment, you could integrate with services like:
+            # - Screaming Frog API
+            # - Ahrefs API  
+            # - SEMrush API
+            # But for this implementation, we'll stick to website-provided data
+            
+            return {
+                'total_pages': None,
+                'source': 'unavailable',
+                'reliability': 'none',
+                'details': 'Website does not provide sitemap or reliable page count information'
+            }
+            
+        except Exception as e:
+            return {
+                'total_pages': None,
+                'source': 'error',
+                'reliability': 'none',
+                'details': f'Error analyzing website structure: {str(e)}'
+            }
+    
+    def _analyze_sitemaps(self, base_url: str, domain: str) -> dict:
+        """Comprehensively analyze sitemaps including nested ones"""
+        import re
+        from urllib.parse import urljoin
+        
+        total_urls = set()
+        sitemap_files_found = []
+        
+        # Common sitemap locations
+        sitemap_locations = [
+            '/sitemap.xml',
+            '/sitemap_index.xml', 
+            '/sitemaps.xml',
+            '/sitemap/sitemap.xml',
+            '/wp-sitemap.xml',  # WordPress
+            '/sitemap.php'
+        ]
+        
+        # Check robots.txt first for sitemap declarations
+        try:
+            robots_url = urljoin(base_url, '/robots.txt')
+            response = self.session.get(robots_url, timeout=10)
+            if response.status_code == 200:
+                sitemap_refs = re.findall(r'sitemap:\s*(\S+)', response.text, re.IGNORECASE)
+                sitemap_locations.extend(sitemap_refs)
+        except:
+            pass
+        
+        # Process each sitemap location
+        for sitemap_location in set(sitemap_locations):
+            try:
+                if sitemap_location.startswith('http'):
+                    sitemap_url = sitemap_location
+                else:
+                    sitemap_url = urljoin(base_url, sitemap_location)
+                
+                response = self.session.get(sitemap_url, timeout=15)
+                if response.status_code == 200:
+                    content = response.text
                     
-                    if response.status_code == 200:
-                        content = response.text
+                    # Check if it's a sitemap index (contains references to other sitemaps)
+                    if '<sitemapindex' in content.lower() or '<sitemap>' in content:
+                        nested_sitemaps = re.findall(r'<loc[^>]*>(.*?)</loc>', content, re.IGNORECASE | re.DOTALL)
+                        sitemap_files_found.append({
+                            'url': sitemap_url,
+                            'type': 'index',
+                            'nested_count': len(nested_sitemaps)
+                        })
                         
-                        if 'sitemap' in sitemap_path and 'xml' in content.lower():
-                            # Count URLs in sitemap more accurately
-                            # Look for <loc> tags which contain actual URLs
-                            loc_urls = re.findall(r'<loc[^>]*>(.*?)</loc>', content, re.IGNORECASE | re.DOTALL)
-                            if loc_urls:
-                                # Filter URLs that belong to the same domain
-                                domain_urls = [url for url in loc_urls if parsed_url.netloc in url]
-                                if len(domain_urls) > 10:  # Valid sitemap with substantial URLs
-                                    return min(len(domain_urls), 2000)  # More realistic cap
-                            
-                            # Fallback: count URL entries
-                            url_entries = re.findall(r'<url[^>]*>', content, re.IGNORECASE)
-                            if len(url_entries) > 10:
-                                return min(len(url_entries), 2000)
-                        
-                        elif 'robots.txt' in sitemap_path:
-                            # Look for sitemap references in robots.txt
-                            sitemap_refs = re.findall(r'sitemap:\s*(\S+)', content, re.IGNORECASE)
-                            for sitemap_ref in sitemap_refs:
+                        # Process nested sitemaps
+                        for nested_url in nested_sitemaps:
+                            nested_url = nested_url.strip()
+                            if domain in nested_url:  # Only process same-domain sitemaps
                                 try:
-                                    sitemap_response = self.session.get(sitemap_ref, timeout=10)
-                                    if sitemap_response.status_code == 200:
-                                        sitemap_content = sitemap_response.text
-                                        loc_urls = re.findall(r'<loc[^>]*>(.*?)</loc>', sitemap_content, re.IGNORECASE | re.DOTALL)
-                                        if loc_urls:
-                                            domain_urls = [url for url in loc_urls if parsed_url.netloc in url]
-                                            if len(domain_urls) > 10:
-                                                return min(len(domain_urls), 2000)
+                                    nested_response = self.session.get(nested_url, timeout=10)
+                                    if nested_response.status_code == 200:
+                                        nested_urls = re.findall(r'<loc[^>]*>(.*?)</loc>', nested_response.text, re.IGNORECASE | re.DOTALL)
+                                        domain_urls = [url.strip() for url in nested_urls if domain in url]
+                                        total_urls.update(domain_urls)
+                                        sitemap_files_found.append({
+                                            'url': nested_url,
+                                            'type': 'nested',
+                                            'url_count': len(domain_urls)
+                                        })
                                 except:
                                     continue
-                except:
-                    continue
-            
-            # Enhanced fallback: sample the first few pages to estimate depth
-            try:
-                response = self.session.get(start_url, timeout=10)
-                if response.status_code == 200:
-                    # Count unique internal links on homepage
-                    links = self._extract_links(response.text, start_url)
-                    unique_internal_links = len(set(links))
                     
-                    # Estimate based on link density
-                    if unique_internal_links > 100:
-                        return min(unique_internal_links * 3, 2000)  # Large site
-                    elif unique_internal_links > 50:
-                        return min(unique_internal_links * 2, 1000)  # Medium site
-                    elif unique_internal_links > 20:
-                        return min(unique_internal_links * 1.5, 500)  # Small-medium site
                     else:
-                        return max(unique_internal_links, 50)  # Small site
+                        # Regular sitemap with URLs
+                        loc_urls = re.findall(r'<loc[^>]*>(.*?)</loc>', content, re.IGNORECASE | re.DOTALL)
+                        domain_urls = [url.strip() for url in loc_urls if domain in url]
+                        if domain_urls:
+                            total_urls.update(domain_urls)
+                            sitemap_files_found.append({
+                                'url': sitemap_url,
+                                'type': 'regular',
+                                'url_count': len(domain_urls)
+                            })
             except:
-                pass
-            
-            # Conservative fallback
-            return 200  # More realistic default estimate
-            
-        except Exception:
-            return 200  # Realistic default estimate
+                continue
+        
+        if total_urls:
+            return {
+                'found': True,
+                'count': len(total_urls),
+                'details': f"Found {len(sitemap_files_found)} sitemap file(s) with {len(total_urls)} unique URLs",
+                'files': sitemap_files_found
+            }
+        
+        return {'found': False, 'count': 0, 'details': 'No valid sitemaps found', 'files': []}
 
     def get_crawl_stats(self) -> Dict[str, Any]:
         """Get statistics about the crawled content"""
