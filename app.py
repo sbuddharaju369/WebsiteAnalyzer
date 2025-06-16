@@ -30,7 +30,8 @@ def initialize_session_state():
         'cache_files': [],
         'current_domain': None,
         'crawl_in_progress': False,
-        'answer_verbosity': 'concise'  # Options: 'concise', 'balanced', 'comprehensive'
+        'answer_verbosity': 'concise',  # Options: 'concise', 'balanced', 'comprehensive'
+        'active_drawer': None  # Options: 'crawler', 'cache', 'overview'
     }
     
     for key, default in defaults.items():
@@ -389,121 +390,150 @@ def main():
     st.title("🌐 Web Content Analyzer")
     st.markdown("Transform any website into intelligent, searchable knowledge using AI-powered content analysis.")
     
-    # Sidebar for crawling controls
+    # Disclaimer
+    st.info("""
+    **Responsible Crawling Notice:** We respect website policies including robots.txt, sitemap.xml, and other crawling directives. 
+    Only publicly accessible pages are crawled (no authentication required). We crawl both static and dynamic content 
+    with a 1-5 second delay between requests and 10-second page load timeout to be respectful to server resources.
+    """)
+    
+    # Sidebar with collapsible sections
     with st.sidebar:
-        st.header("🕷️ Web Crawler")
+        st.markdown("### Navigation")
         
-        # URL input
-        url_input = st.text_input(
-            "Website URL",
-            placeholder="https://example.com",
-            help="Enter the URL of the website you want to analyze"
-        )
+        # Navigation buttons for drawers
+        col1, col2, col3 = st.columns(3)
         
-        # Crawling parameters
-        with st.expander("⚙️ Crawling Settings"):
-            max_pages = st.slider("Maximum pages to crawl", 1, 100, 25)
-            delay = st.slider("Delay between requests (seconds)", 0.5, 5.0, 1.0, 0.5)
-            st.info("Higher delays are more respectful to websites but take longer")
+        with col1:
+            if st.button("🕷️ Web Crawler", use_container_width=True):
+                st.session_state.active_drawer = 'crawler' if st.session_state.active_drawer != 'crawler' else None
         
-        # Crawl button
-        if st.button("🚀 Start Crawling", disabled=st.session_state.crawl_in_progress):
-            if url_input:
-                st.session_state.crawl_in_progress = True
-                domain = urlparse(url_input).netloc
-                st.session_state.current_domain = domain
-                
-                with st.spinner(f"Crawling {domain}..."):
-                    content, stats, cache_file = crawl_website(url_input, max_pages, delay)
-                    
-                    if content:
-                        st.session_state.crawled_content = content
-                        st.session_state.crawl_stats = stats
-                        
-                        # Initialize RAG engine and process content (creates embeddings)
-                        with st.spinner("Processing content for AI analysis..."):
-                            rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
-                            rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
-                            st.session_state.rag_engine = rag_engine
-                        
-                        # Re-save cache with embeddings included
-                        with st.spinner("Saving embeddings to cache..."):
-                            crawler = WebCrawler()
-                            crawler.scraped_content = content  # Set the content with embeddings
-                            updated_cache_file = crawler.save_cache()
-                            st.info(f"Cache updated with embeddings: {updated_cache_file}")
-                        
-                        st.success(f"✅ Successfully analyzed {len(content)} pages!")
-                    else:
-                        st.error("Failed to crawl website. Please check the URL and try again.")
-                
-                st.session_state.crawl_in_progress = False
-            else:
-                st.warning("Please enter a valid URL")
+        with col2:
+            if st.button("💾 Cache", use_container_width=True):
+                st.session_state.active_drawer = 'cache' if st.session_state.active_drawer != 'cache' else None
         
-        # Cache management
-        st.markdown("### 💾 Cache Management")
-        cache_files = get_cache_files()
-        st.session_state.cache_files = cache_files
+        with col3:
+            if st.button("📊 Overview", use_container_width=True):
+                st.session_state.active_drawer = 'overview' if st.session_state.active_drawer != 'overview' else None
         
-        if cache_files:
-            def format_cache_name(filename):
-                if filename is None:
-                    return "Select cache file..."
-                
-                # Handle new readable format (domain_date_time_pages.json)
-                if filename.endswith('pages.json'):
-                    parts = filename.replace('.json', '').split('_')
-                    if len(parts) >= 4:
-                        domain = parts[0]
-                        date_part = parts[1]  # e.g., "Dec-15-2025"
-                        time_part = parts[2]  # e.g., "2-28pm"
-                        pages_part = parts[3]  # e.g., "48pages"
-                        
-                        # Convert to more readable format
-                        try:
-                            # Parse date: "Dec-15-2025" -> "December 15, 2025"
-                            date_obj = datetime.strptime(date_part, "%b-%d-%Y")
-                            readable_date = date_obj.strftime("%B %d, %Y")
-                            
-                            # Parse time: "2-28pm" -> "2:28 PM"
-                            time_clean = time_part.replace('pm', ' PM').replace('am', ' AM')
-                            time_clean = time_clean.replace('-', ':')
-                            
-                            # Extract page count
-                            page_count = pages_part.replace('pages', '')
-                            
-                            return f"{domain} - {readable_date} at {time_clean} ({page_count} pages)"
-                        except:
-                            pass
-                
-                # Handle old format (cache_domain_timestamp.json)
-                elif filename.startswith('cache_'):
-                    parts = filename.split('_')
-                    if len(parts) >= 3:
-                        domain = parts[1].replace('www.', '')
-                        timestamp = parts[2].replace('.json', '')
-                        try:
-                            # Parse timestamp and make it user-friendly
-                            dt = datetime.strptime(timestamp, "%Y%m%d%H%M%S")
-                            date_str = dt.strftime("%B %d, %Y at %I:%M %p")
-                            pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
-                            return f"{domain} - {date_str} ({pages} pages)"
-                        except:
-                            pass
-                
-                # Fallback to original format
-                try:
-                    pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
-                    return f"{filename} ({pages} pages)"
-                except:
-                    return filename
+        st.divider()
+        
+        # Web Crawler Drawer
+        if st.session_state.active_drawer == 'crawler':
+            st.markdown("#### 🕷️ Web Crawler")
             
-            selected_cache = st.selectbox(
-                "Load from cache:",
-                options=[None] + [f['filename'] for f in cache_files],
-                format_func=format_cache_name
+            # URL input
+            url_input = st.text_input(
+                "Website URL",
+                placeholder="https://example.com",
+                help="Enter the URL of the website you want to analyze"
             )
+            
+            # Crawling parameters
+            with st.expander("⚙️ Crawling Settings"):
+                max_pages = st.slider("Maximum pages to crawl", 1, 100, 25)
+                delay = st.slider("Delay between requests (seconds)", 0.5, 5.0, 1.0, 0.5)
+                st.info("Higher delays are more respectful to websites but take longer")
+            
+            # Crawl button
+            if st.button("🔍 Start Crawling", disabled=st.session_state.crawl_in_progress):
+                if url_input:
+                    st.session_state.crawl_in_progress = True
+                    domain = urlparse(url_input).netloc
+                    st.session_state.current_domain = domain
+                    
+                    with st.spinner(f"Crawling {domain}..."):
+                        content, stats, cache_file = crawl_website(url_input, max_pages, delay)
+                        
+                        if content:
+                            st.session_state.crawled_content = content
+                            st.session_state.crawl_stats = stats
+                            
+                            # Initialize RAG engine and process content (creates embeddings)
+                            with st.spinner("Processing content for AI analysis..."):
+                                rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
+                                rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
+                                st.session_state.rag_engine = rag_engine
+                            
+                            # Re-save cache with embeddings included
+                            with st.spinner("Saving embeddings to cache..."):
+                                crawler = WebCrawler()
+                                crawler.scraped_content = content  # Set the content with embeddings
+                                updated_cache_file = crawler.save_cache()
+                                st.info(f"Cache updated with embeddings: {updated_cache_file}")
+                            
+                            st.success(f"✅ Successfully analyzed {len(content)} pages!")
+                        else:
+                            st.error("Failed to crawl website. Please check the URL and try again.")
+                    
+                    st.session_state.crawl_in_progress = False
+                else:
+                    st.warning("Please enter a valid URL")
+        
+        # Cache Management Drawer
+        elif st.session_state.active_drawer == 'cache':
+            st.markdown("#### 💾 Cache Management")
+            cache_files = get_cache_files()
+            st.session_state.cache_files = cache_files
+            
+            if cache_files:
+                def format_cache_name(filename):
+                    if filename is None:
+                        return "Select cache file..."
+                    
+                    # Handle new readable format (domain_date_time_pages.json)
+                    if filename.endswith('pages.json'):
+                        parts = filename.replace('.json', '').split('_')
+                        if len(parts) >= 4:
+                            domain = parts[0]
+                            date_part = parts[1]  # e.g., "Dec-15-2025"
+                            time_part = parts[2]  # e.g., "2-28pm"
+                            pages_part = parts[3]  # e.g., "48pages"
+                            
+                            # Convert to more readable format
+                            try:
+                                # Parse date: "Dec-15-2025" -> "December 15, 2025"
+                                date_obj = datetime.strptime(date_part, "%b-%d-%Y")
+                                readable_date = date_obj.strftime("%B %d, %Y")
+                                
+                                # Parse time: "2-28pm" -> "2:28 PM"
+                                time_clean = time_part.replace('pm', ' PM').replace('am', ' AM')
+                                time_clean = time_clean.replace('-', ':')
+                                
+                                # Extract page count
+                                page_count = pages_part.replace('pages', '')
+                                
+                                return f"{domain} - {readable_date} at {time_clean} ({page_count} pages)"
+                            except:
+                                pass
+                    
+                    # Handle old format (cache_domain_timestamp.json)
+                    elif filename.startswith('cache_'):
+                        parts = filename.split('_')
+                        if len(parts) >= 3:
+                            domain = parts[1].replace('www.', '')
+                            timestamp = parts[2].replace('.json', '')
+                            try:
+                                # Parse timestamp and make it user-friendly
+                                dt = datetime.strptime(timestamp, "%Y%m%d%H%M%S")
+                                date_str = dt.strftime("%B %d, %Y at %I:%M %p")
+                                pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
+                                return f"{domain} - {date_str} ({pages} pages)"
+                            except:
+                                pass
+                    
+                    # Fallback to original format
+                    try:
+                        pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
+                        return f"{filename} ({pages} pages)"
+                    except:
+                        return filename
+                
+                selected_cache = st.selectbox(
+                    "Load from cache:",
+                    options=[None] + [f['filename'] for f in cache_files],
+                    format_func=format_cache_name
+                )
             
             if st.button("📂 Load Cache") and selected_cache:
                 with st.spinner("Loading cached content..."):
