@@ -151,17 +151,11 @@ def crawl_website(url, max_pages, delay):
         # Progress bar with custom styling
         progress_bar = st.progress(0)
         
-        # Real-time metrics in columns
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            visited_metric = st.metric("Pages Visited", "0")
-        with col2:
-            extracted_metric = st.metric("Content Extracted", "0")
-        with col3:
-            success_rate_metric = st.metric("Success Rate", "0%")
-        with col4:
-            eta_metric = st.metric("Est. Time Left", "Calculating...")
+        # Real-time metrics - each on its own line for sidebar
+        visited_metric = st.metric("Pages Visited", "0")
+        extracted_metric = st.metric("Content Extracted", "0")
+        success_rate_metric = st.metric("Success Rate", "0%")
+        eta_metric = st.metric("Est. Time Left", "Calculating...")
         
         # Status and current page display
         status_container = st.container()
@@ -176,31 +170,40 @@ def crawl_website(url, max_pages, delay):
     crawl_start_time = time.time()
     performance_data = []
     
-    def progress_callback(visited, extracted, current_url=None, page_title=None):
+    def progress_callback(visited, extracted, current_url=None, page_title=None, estimated_total=None, discovered_count=None):
         current_time = time.time()
         elapsed_time = current_time - crawl_start_time
         
-        # Update progress bar
-        progress = min(visited / max_pages, 1.0)
+        # Use dynamic estimation if available
+        effective_total = estimated_total if estimated_total else max_pages
+        dynamic_max = min(max_pages, effective_total)
+        
+        # Update progress bar based on dynamic estimation
+        progress = min(visited / dynamic_max, 1.0)
         progress_bar.progress(progress)
         
         # Calculate metrics
         success_rate = (extracted / visited * 100) if visited > 0 else 0
         pages_per_minute = (visited / elapsed_time * 60) if elapsed_time > 0 else 0
         
-        # Estimate time remaining
-        if pages_per_minute > 0 and visited < max_pages:
-            remaining_pages = max_pages - visited
+        # Estimate time remaining based on dynamic total
+        if pages_per_minute > 0 and visited < dynamic_max:
+            remaining_pages = dynamic_max - visited
             eta_seconds = remaining_pages / pages_per_minute * 60
             eta_text = f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s"
         else:
             eta_text = "Almost done!"
         
-        # Update metrics
-        visited_metric.metric("Pages Visited", f"{visited}/{max_pages}")
+        # Update metrics with dynamic information
+        if discovered_count and discovered_count > max_pages:
+            visited_display = f"{visited}/{max_pages} (found {discovered_count})"
+        else:
+            visited_display = f"{visited}/{dynamic_max}"
+            
+        visited_metric.metric("Pages Visited", visited_display)
         extracted_metric.metric("Content Extracted", str(extracted))
         success_rate_metric.metric("Success Rate", f"{success_rate:.1f}%")
-        eta_metric.metric("Est. Time Left", eta_text)
+        eta_metric.metric("Time Left", eta_text)
         
         # Update status text with current page details
         if current_url and page_title:

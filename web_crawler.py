@@ -120,6 +120,8 @@ class WebCrawler:
         urls_to_visit = [start_url]
         base_domain = urlparse(start_url).netloc
         
+        all_discovered_links = set([start_url])
+        
         while urls_to_visit and len(self.visited_urls) < self.max_pages:
             current_url = urls_to_visit.pop(0)
             
@@ -139,6 +141,9 @@ class WebCrawler:
                     response = self.session.get(current_url, timeout=10)
                     new_links = self._extract_links(response.text, current_url)
                     
+                    # Track all discovered links for better estimation
+                    all_discovered_links.update(new_links)
+                    
                     # Add new links to the queue
                     for link in new_links:
                         if link not in self.visited_urls and link not in urls_to_visit:
@@ -147,14 +152,24 @@ class WebCrawler:
                 except Exception as e:
                     print(f"Error getting links from {current_url}: {e}")
             
-            # Enhanced progress callback with current page info
+            # Update dynamic estimation based on discovered links
+            discovered_count = len(all_discovered_links)
+            if hasattr(self, 'estimated_total_pages') and discovered_count > self.estimated_total_pages:
+                # Update estimate but cap it at reasonable limits
+                self.estimated_total_pages = min(discovered_count, 2000)
+            
+            # Enhanced progress callback with current page info and updated estimate
             if progress_callback:
                 page_title = content.get('title', 'Untitled') if content else 'Failed to load'
+                # Pass the dynamic estimate to the callback
+                estimated_total = getattr(self, 'estimated_total_pages', len(all_discovered_links))
                 progress_callback(
                     len(self.visited_urls), 
                     len(self.scraped_content),
                     current_url,
-                    page_title
+                    page_title,
+                    estimated_total,
+                    discovered_count
                 )
             
             # Rate limiting
@@ -224,39 +239,69 @@ class WebCrawler:
             for sitemap_path in sitemap_urls:
                 try:
                     sitemap_url = urljoin(base_url, sitemap_path)
-                    response = self.session.get(sitemap_url, timeout=5)
+                    response = self.session.get(sitemap_url, timeout=10)
                     
                     if response.status_code == 200:
-                        content = response.text.lower()
+                        content = response.text
                         
-                        if 'sitemap' in sitemap_path and 'xml' in content:
-                            # Count URLs in sitemap
-                            url_count = len(re.findall(r'<(?:url|loc)>', content, re.IGNORECASE))
-                            if url_count > 5:  # Valid sitemap with URLs
-                                return min(url_count, 1000)  # Cap at reasonable limit
+                        if 'sitemap' in sitemap_path and 'xml' in content.lower():
+                            # Count URLs in sitemap more accurately
+                            # Look for <loc> tags which contain actual URLs
+                            loc_urls = re.findall(r'<loc[^>]*>(.*?)</loc>', content, re.IGNORECASE | re.DOTALL)
+                            if loc_urls:
+                                # Filter URLs that belong to the same domain
+                                domain_urls = [url for url in loc_urls if parsed_url.netloc in url]
+                                if len(domain_urls) > 10:  # Valid sitemap with substantial URLs
+                                    return min(len(domain_urls), 2000)  # More realistic cap
+                            
+                            # Fallback: count URL entries
+                            url_entries = re.findall(r'<url[^>]*>', content, re.IGNORECASE)
+                            if len(url_entries) > 10:
+                                return min(len(url_entries), 2000)
                         
                         elif 'robots.txt' in sitemap_path:
                             # Look for sitemap references in robots.txt
                             sitemap_refs = re.findall(r'sitemap:\s*(\S+)', content, re.IGNORECASE)
-                            if sitemap_refs:
-                                # Try to fetch the referenced sitemap
+                            for sitemap_ref in sitemap_refs:
                                 try:
-                                    sitemap_response = self.session.get(sitemap_refs[0], timeout=5)
+                                    sitemap_response = self.session.get(sitemap_ref, timeout=10)
                                     if sitemap_response.status_code == 200:
-                                        url_count = len(re.findall(r'<(?:url|loc)>', sitemap_response.text, re.IGNORECASE))
-                                        if url_count > 5:
-                                            return min(url_count, 1000)
+                                        sitemap_content = sitemap_response.text
+                                        loc_urls = re.findall(r'<loc[^>]*>(.*?)</loc>', sitemap_content, re.IGNORECASE | re.DOTALL)
+                                        if loc_urls:
+                                            domain_urls = [url for url in loc_urls if parsed_url.netloc in url]
+                                            if len(domain_urls) > 10:
+                                                return min(len(domain_urls), 2000)
                                 except:
-                                    pass
+                                    continue
                 except:
                     continue
             
-            # Fallback: estimate based on discovered links during initial crawl
-            # This will be updated during crawling
-            return 50  # Conservative default estimate
+            # Enhanced fallback: sample the first few pages to estimate depth
+            try:
+                response = self.session.get(start_url, timeout=10)
+                if response.status_code == 200:
+                    # Count unique internal links on homepage
+                    links = self._extract_links(response.text, start_url)
+                    unique_internal_links = len(set(links))
+                    
+                    # Estimate based on link density
+                    if unique_internal_links > 100:
+                        return min(unique_internal_links * 3, 2000)  # Large site
+                    elif unique_internal_links > 50:
+                        return min(unique_internal_links * 2, 1000)  # Medium site
+                    elif unique_internal_links > 20:
+                        return min(unique_internal_links * 1.5, 500)  # Small-medium site
+                    else:
+                        return max(unique_internal_links, 50)  # Small site
+            except:
+                pass
+            
+            # Conservative fallback
+            return 200  # More realistic default estimate
             
         except Exception:
-            return 50  # Default conservative estimate
+            return 200  # Realistic default estimate
 
     def get_crawl_stats(self) -> Dict[str, Any]:
         """Get statistics about the crawled content"""
