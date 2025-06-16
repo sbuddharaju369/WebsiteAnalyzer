@@ -171,13 +171,23 @@ class WebContentAnalyzer:
                     st.markdown(f"**Website Coverage:** :{coverage_color}[{coverage:.1f}%]")
                     st.caption(f"Crawled {stats['total_pages']} of {stats.get('estimated_total_pages', 0)} total pages")
                     
-                    # Show source of size estimation
+                    # Show source of size estimation with accurate details
                     size_source = stats.get('size_source', 'unknown')
+                    size_details = stats.get('size_details', '')
+                    
                     if size_source == 'sitemap':
                         st.caption("📋 Size based on website sitemap analysis")
+                    elif size_source == 'robots':
+                        st.caption("🤖 Size estimated from robots.txt sitemap references")
+                    elif size_source == 'dynamic':
+                        st.caption("🔍 Size estimated through dynamic link discovery")
                     elif size_source == 'third_party':
-                        service_name = stats.get('size_details', '').split(':')[0] if ':' in stats.get('size_details', '') else 'third-party service'
-                        st.caption(f"🔍 Size estimated using {service_name}")
+                        service_name = size_details.split(':')[0] if ':' in size_details else 'third-party service'
+                        st.caption(f"🌐 Size estimated using {service_name}")
+                    elif size_source == 'fallback':
+                        st.caption("⚠️ Size estimation unavailable - showing crawled pages only")
+                    else:
+                        st.caption("❓ Size estimation method unknown")
                 
                 # Content summary
                 if st.session_state.rag_engine:
@@ -192,54 +202,146 @@ class WebContentAnalyzer:
         domain = urlparse(url).netloc
         st.session_state.current_domain = domain
         
-        with st.spinner(f"Crawling {domain}..."):
-            crawler = WebCrawler(max_pages=max_pages, delay=delay)
+        # Create progress tracking containers
+        progress_container = st.container()
+        with progress_container:
+            st.markdown(f"### 🕷️ Crawling {domain}")
             
-            # Create progress tracking
-            progress_placeholder = st.empty()
+            # Progress metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                pages_visited = st.metric("Pages Visited", 0)
+            with col2:
+                pages_extracted = st.metric("Content Extracted", 0)
+            with col3:
+                current_page_metric = st.metric("Current Page", "Starting...")
+            with col4:
+                eta_metric = st.metric("ETA", "Calculating...")
             
-            def progress_callback(visited, extracted, current_url=None, page_title=None):
-                progress_placeholder.text(f"Crawled {visited} pages, extracted {extracted} pages")
+            # Progress bar
+            progress_bar = st.progress(0)
+            status_text = st.empty()
             
-            # Crawl the website
-            content = crawler.crawl_website(url, progress_callback=progress_callback)
+            # Performance chart placeholder
+            chart_placeholder = st.empty()
             
-            if content:
-                st.session_state.crawled_content = content
+            # Initialize performance tracking
+            performance_data = {
+                'timestamps': [],
+                'pages_per_minute': [],
+                'cumulative_pages': []
+            }
+            start_time = datetime.now()
+        
+        crawler = WebCrawler(max_pages=max_pages, delay=delay)
+        
+        def progress_callback(visited, extracted, current_url=None, page_title=None):
+            # Update metrics
+            col1.metric("Pages Visited", visited)
+            col2.metric("Content Extracted", extracted)
+            
+            if current_url:
+                current_page_display = current_url.split('/')[-1][:30] + "..." if len(current_url.split('/')[-1]) > 30 else current_url.split('/')[-1]
+                col3.metric("Current Page", current_page_display)
+            
+            # Calculate ETA
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if visited > 0 and elapsed > 0:
+                rate = visited / (elapsed / 60)  # pages per minute
+                remaining = max_pages - visited
+                eta_minutes = remaining / rate if rate > 0 else 0
                 
-                # Calculate statistics
-                stats = crawler.get_crawl_stats()
+                if eta_minutes < 1:
+                    eta_display = "< 1 min"
+                elif eta_minutes < 60:
+                    eta_display = f"{eta_minutes:.0f} min"
+                else:
+                    hours = eta_minutes / 60
+                    eta_display = f"{hours:.1f} hrs"
                 
-                # Get website size estimation for coverage
-                estimation_result = crawler.estimate_total_pages(url)
-                stats['estimation_result'] = estimation_result
+                col4.metric("ETA", eta_display)
                 
-                if estimation_result['total_pages'] is not None:
-                    estimated_total = estimation_result['total_pages']
-                    coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
-                    stats.update({
-                        'estimated_total_pages': estimated_total,
-                        'coverage_percentage': coverage_percentage,
-                        'size_source': estimation_result['source'],
-                        'size_details': estimation_result['details']
-                    })
+                # Update performance data
+                performance_data['timestamps'].append(elapsed / 60)
+                performance_data['pages_per_minute'].append(rate)
+                performance_data['cumulative_pages'].append(visited)
                 
-                st.session_state.crawl_stats = stats
-                
-                # Initialize RAG engine and process content
-                with st.spinner("Processing content for AI analysis..."):
-                    rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
-                    rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
-                    st.session_state.rag_engine = rag_engine
-                
-                # Save cache with embeddings
-                with st.spinner("Saving to cache..."):
-                    cache_file = self.cache_manager.save_cache(content, domain)
-                    st.info(f"Cache saved: {cache_file}")
-                
-                st.success(f"Successfully analyzed {len(content)} pages!")
+                # Update performance chart every 5 pages
+                if visited % 5 == 0 and len(performance_data['timestamps']) > 1:
+                    try:
+                        import plotly.graph_objects as go
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=performance_data['timestamps'],
+                            y=performance_data['pages_per_minute'],
+                            mode='lines+markers',
+                            name='Pages/Min',
+                            line=dict(color='#1f77b4')
+                        ))
+                        fig.update_layout(
+                            title="Crawling Performance",
+                            xaxis_title="Time (minutes)",
+                            yaxis_title="Pages per Minute",
+                            height=200,
+                            showlegend=False
+                        )
+                        chart_placeholder.plotly_chart(fig, use_container_width=True)
+                    except:
+                        pass
+            
+            # Update progress bar
+            progress = min(visited / max_pages, 1.0)
+            progress_bar.progress(progress)
+            
+            # Update status
+            if page_title:
+                title_display = page_title[:50] + "..." if len(page_title) > 50 else page_title
+                status_text.text(f"Processing: {title_display}")
             else:
-                st.error("Failed to crawl website. Please check the URL and try again.")
+                status_text.text(f"Crawling page {visited}/{max_pages}")
+        
+        # Crawl the website
+        content = crawler.crawl_website(url, progress_callback=progress_callback)
+        
+        # Clear progress display and show results
+        progress_container.empty()
+        
+        if content:
+            st.session_state.crawled_content = content
+            
+            # Calculate statistics
+            stats = crawler.get_crawl_stats()
+            
+            # Get website size estimation for coverage
+            estimation_result = crawler.estimate_total_pages(url)
+            stats['estimation_result'] = estimation_result
+            
+            if estimation_result['total_pages'] is not None:
+                estimated_total = estimation_result['total_pages']
+                coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
+                stats.update({
+                    'estimated_total_pages': estimated_total,
+                    'coverage_percentage': coverage_percentage,
+                    'size_source': estimation_result['source'],
+                    'size_details': estimation_result['details']
+                })
+            
+            st.session_state.crawl_stats = stats
+            
+            # Initialize RAG engine and process content
+            with st.spinner("Processing content for AI analysis..."):
+                rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
+                rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
+                st.session_state.rag_engine = rag_engine
+            
+            # Save cache with embeddings
+            with st.spinner("Saving to cache..."):
+                cache_file = self.cache_manager.save_cache(content, domain)
+                st.info(f"Cache saved: {cache_file}")
+            
+            st.success(f"Successfully analyzed {len(content)} pages!")
+        else:
+            st.error("Failed to crawl website. Please check the URL and try again.")
         
         st.session_state.crawl_in_progress = False
 
