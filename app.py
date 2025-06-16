@@ -420,11 +420,18 @@ def main():
                         st.session_state.crawled_content = content
                         st.session_state.crawl_stats = stats
                         
-                        # Initialize RAG engine
+                        # Initialize RAG engine and process content (creates embeddings)
                         with st.spinner("Processing content for AI analysis..."):
                             rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
-                            rag_engine.process_web_content(content, domain)
+                            rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
                             st.session_state.rag_engine = rag_engine
+                        
+                        # Re-save cache with embeddings included
+                        with st.spinner("Saving embeddings to cache..."):
+                            crawler = WebCrawler()
+                            crawler.scraped_content = content  # Set the content with embeddings
+                            updated_cache_file = crawler.save_cache()
+                            st.info(f"Cache updated with embeddings: {updated_cache_file}")
                         
                         st.success(f"✅ Successfully analyzed {len(content)} pages!")
                     else:
