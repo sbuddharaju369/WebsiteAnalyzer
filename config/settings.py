@@ -20,8 +20,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Application Settings
 DEFAULT_MAX_PAGES = 25
 DEFAULT_DELAY = 1.0
-DEFAULT_CHUNK_SIZE = 600
-DEFAULT_OVERLAP = 100
+DEFAULT_CHUNK_SIZE = 1000  # Increased to reduce API calls
+DEFAULT_OVERLAP = 150
 DEFAULT_VERBOSITY = "concise"
 
 # Database Configuration

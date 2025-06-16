@@ -237,35 +237,75 @@ class WebRAGEngine:
         metadatas = []
         ids = []
         
+        # Collect all chunks first for batch processing
+        all_chunks = []
+        chunk_page_mapping = []
+        
         doc_id = 0
         
-        for page in web_content:
+        for page_idx, page in enumerate(web_content):
             content = page.get('content', '')
             if not content.strip():
                 continue
             
             chunks = self._smart_chunk_text(content)
-            chunk_embeddings = []
+            page_chunks = []
             
             for chunk in chunks:
-                embedding = self._get_embedding(chunk)
-                if embedding:
-                    chunk_embeddings.append(embedding)
-                    documents.append(chunk)
-                    embeddings.append(embedding)
-                    metadatas.append({
-                        'url': page.get('url', ''),
-                        'title': page.get('title', ''),
-                        'domain': page.get('domain', ''),
-                        'word_count': len(chunk.split()),
-                        'chunk_index': len(documents) - 1
-                    })
-                    ids.append(f"doc_{doc_id}")
-                    doc_id += 1
+                all_chunks.append(chunk)
+                chunk_page_mapping.append(page_idx)
+                page_chunks.append(chunk)
+                
+                metadatas.append({
+                    'url': page.get('url', ''),
+                    'title': page.get('title', ''),
+                    'domain': page.get('domain', ''),
+                    'word_count': len(chunk.split()),
+                    'chunk_index': len(all_chunks) - 1
+                })
+                ids.append(f"doc_{doc_id}")
+                doc_id += 1
             
-            # Store chunks and embeddings in the page data for caching
-            page['chunks'] = chunks
-            page['embeddings'] = chunk_embeddings
+            # Store chunks in page data
+            page['chunks'] = page_chunks
+            page['embeddings'] = []  # Will be populated after batch processing
+        
+        # Batch process embeddings for better performance
+        if all_chunks:
+            documents = all_chunks
+            
+            # Process embeddings in smaller batches to avoid rate limits
+            batch_size = 10
+            all_embeddings = []
+            
+            for i in range(0, len(all_chunks), batch_size):
+                batch_chunks = all_chunks[i:i + batch_size]
+                batch_embeddings = []
+                
+                for chunk in batch_chunks:
+                    embedding = self._get_embedding(chunk)
+                    if embedding:
+                        batch_embeddings.append(embedding)
+                    else:
+                        # Use a zero vector if embedding fails
+                        batch_embeddings.append([0.0] * 1536)  # OpenAI embedding dimension
+                
+                all_embeddings.extend(batch_embeddings)
+                
+                # Small delay to respect rate limits
+                import time
+                time.sleep(0.1)
+            
+            embeddings = all_embeddings
+            
+            # Map embeddings back to pages for caching
+            embedding_idx = 0
+            for page_idx, page in enumerate(web_content):
+                page_chunk_count = len(page.get('chunks', []))
+                if page_chunk_count > 0:
+                    page_embeddings = embeddings[embedding_idx:embedding_idx + page_chunk_count]
+                    page['embeddings'] = page_embeddings
+                    embedding_idx += page_chunk_count
         
         # Add to ChromaDB
         if documents:

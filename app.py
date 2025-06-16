@@ -380,11 +380,55 @@ class WebContentAnalyzer:
             stats = crawler.get_crawl_stats()
             st.session_state.crawl_stats = stats
             
-            # Initialize RAG engine and process content
-            with st.spinner("Processing content for AI analysis..."):
-                rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
-                rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
-                st.session_state.rag_engine = rag_engine
+            # Initialize RAG engine and process content with detailed progress tracking
+            progress_placeholder = st.empty()
+            progress_bar = st.progress(0)
+            
+            # Estimate total chunks for better progress tracking
+            estimated_chunks = 0
+            for page in content:
+                content_length = len(page.get('content', ''))
+                estimated_chunks += max(1, content_length // 3000)  # Rough estimate
+            
+            progress_placeholder.text(f"📊 Initializing AI analysis for {len(content)} pages (~{estimated_chunks} text chunks)")
+            
+            rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
+            
+            # Show what's happening
+            progress_placeholder.text("🔧 Setting up vector database...")
+            progress_bar.progress(0.1)
+            
+            # Process all content at once with detailed progress
+            progress_placeholder.text(f"🧠 Creating AI embeddings for semantic search (this requires {estimated_chunks} OpenAI API calls)")
+            progress_bar.progress(0.2)
+            
+            # Add explanatory info
+            with st.expander("ℹ️ Why AI Analysis Takes Time"):
+                st.markdown("""
+                **The AI analysis involves several steps:**
+                1. **Text Chunking**: Breaking content into semantic pieces
+                2. **Embedding Generation**: Creating AI vectors for each chunk (requires OpenAI API calls)
+                3. **Vector Storage**: Storing embeddings in ChromaDB for fast search
+                4. **Index Building**: Optimizing search performance
+                
+                **Time factors:**
+                - More content = more API calls to OpenAI
+                - Each text chunk needs its own embedding
+                - Network latency to OpenAI servers
+                - Rate limiting to respect API limits
+                
+                **This investment enables:**
+                - Lightning-fast semantic search
+                - Intelligent question answering
+                - Content similarity matching
+                """)
+            
+            # Process content
+            rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
+            
+            progress_placeholder.text("✅ AI analysis complete! Content is now searchable.")
+            progress_bar.progress(1.0)
+            st.session_state.rag_engine = rag_engine
             
             # Save cache with embeddings
             with st.spinner("Saving to cache..."):
