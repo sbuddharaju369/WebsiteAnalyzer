@@ -445,6 +445,36 @@ class WebContentAnalyzer:
 
     def render_main_content(self):
         """Render the main content area"""
+        # Beautiful header
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        ">
+            <h1 style="
+                color: white;
+                font-size: 2.5rem;
+                font-weight: 700;
+                margin: 0;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            ">
+                🕷️ Web Content Analyzer
+            </h1>
+            <p style="
+                color: rgba(255,255,255,0.9);
+                font-size: 1.2rem;
+                margin: 0.5rem 0 0 0;
+                font-weight: 300;
+            ">
+                Transform any website into intelligent, searchable knowledge
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
         # Display protocol disclaimer
         st.info("""
         **Crawling Protocol Notice:** This tool respects website robots.txt files and implements rate limiting. 
@@ -459,9 +489,6 @@ class WebContentAnalyzer:
 
     def render_welcome_screen(self):
         """Render the welcome screen when no content is loaded"""
-        st.title("🕷️ Web Content Analyzer")
-        st.markdown("### Transform any website into intelligent, searchable knowledge")
-        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -488,7 +515,26 @@ class WebContentAnalyzer:
 
     def render_analysis_interface(self):
         """Render the main analysis interface"""
-        st.header(f"💬 Ask Questions about {st.session_state.current_domain}")
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        ">
+            <h2 style="
+                color: white;
+                font-size: 1.8rem;
+                font-weight: 600;
+                margin: 0;
+                text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+            ">
+                💬 Ask Questions about {st.session_state.current_domain}
+            </h2>
+        </div>
+        """, unsafe_allow_html=True)
         
         # Suggested questions
         if st.session_state.rag_engine:
