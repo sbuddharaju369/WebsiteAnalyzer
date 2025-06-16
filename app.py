@@ -405,7 +405,7 @@ def main():
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("🕷️ Web Crawler", use_container_width=True):
+            if st.button("🕷️ Web", use_container_width=True):
                 st.session_state.active_drawer = 'crawler' if st.session_state.active_drawer != 'crawler' else None
         
         with col2:
@@ -413,7 +413,7 @@ def main():
                 st.session_state.active_drawer = 'cache' if st.session_state.active_drawer != 'cache' else None
         
         with col3:
-            if st.button("📊 Overview", use_container_width=True):
+            if st.button("📊 Content", use_container_width=True):
                 st.session_state.active_drawer = 'overview' if st.session_state.active_drawer != 'overview' else None
         
         st.divider()
