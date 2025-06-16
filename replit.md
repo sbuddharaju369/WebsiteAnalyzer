@@ -118,6 +118,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 15, 2025: Added interactive progress bar with real-time metrics, performance charts, and detailed crawling status
 - June 15, 2025: Implemented human-readable cache file naming system with backwards compatibility
 - June 16, 2025: Enhanced website size estimation with dynamic link discovery and improved progress bar layout for sidebar display
+- June 16, 2025: Optimized RAG responses for precision and conciseness with reduced token limits and focused prompts
 
 ## Recent Changes
 

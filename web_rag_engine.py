@@ -337,24 +337,24 @@ class WebRAGEngine:
                 confidence = 0.1
             
             # Generate analysis using OpenAI
-            system_prompt = f"""You are an expert content analyst. Analyze the provided web content to answer questions accurately and comprehensively.
+            system_prompt = f"""You are a precise content analyst. Provide brief, accurate answers using only the provided web content.
 
 Domain: {self.crawl_metadata.get('domain', 'Unknown')}
-Total Pages Analyzed: {self.crawl_metadata.get('total_pages', 0)}
+Total Pages: {self.crawl_metadata.get('total_pages', 0)}
 
 Guidelines:
-- Use only the provided context to answer questions
-- Be specific and cite relevant information from the content
-- If the context doesn't contain enough information, say so clearly
-- Highlight key insights and patterns you notice
-- Provide actionable information when possible"""
+- Keep answers concise and to the point
+- Use only information from the provided context
+- Be specific and factual
+- If information is insufficient, state this briefly
+- Focus on key facts, not elaboration"""
             
             user_prompt = f"""Web Content Context:
 {context}
 
 Question: {question}
 
-Please provide a comprehensive analysis based on the web content above. Include specific details, insights, and any patterns you notice."""
+Provide a precise, concise answer based on the content above. Keep it brief and factual."""
             
             # Get response from OpenAI
             response = self.client.chat.completions.create(
@@ -363,8 +363,8 @@ Please provide a comprehensive analysis based on the web content above. Include 
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=1500,
-                temperature=0.3
+                max_tokens=800,
+                temperature=0.1
             )
             
             answer = response.choices[0].message.content
