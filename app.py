@@ -506,6 +506,28 @@ def main():
                             domain = cache_data.get('domain', urlparse(content[0]['url']).netloc)
                             st.session_state.current_domain = domain
                             
+                            # Calculate coverage for cached content
+                            crawler = WebCrawler()
+                            if content:
+                                base_url = content[0]['url']
+                                estimated_total = crawler.estimate_total_pages(base_url)
+                                coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
+                                
+                                # Calculate content statistics
+                                total_words = sum(page.get('word_count', 0) for page in content)
+                                avg_words = total_words / len(content) if content else 0
+                                
+                                # Store stats for display
+                                st.session_state.crawl_stats = {
+                                    'total_pages': len(content),
+                                    'total_words': total_words,
+                                    'average_words_per_page': avg_words,
+                                    'estimated_total_pages': estimated_total,
+                                    'coverage_percentage': coverage_percentage,
+                                    'domain': domain,
+                                    'source': 'cache'
+                                }
+                            
                             # Initialize RAG engine
                             rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
                             rag_engine.process_web_content(content, domain)

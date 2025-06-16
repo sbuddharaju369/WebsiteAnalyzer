@@ -120,6 +120,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 16, 2025: Enhanced website size estimation with dynamic link discovery and improved progress bar layout for sidebar display
 - June 16, 2025: Optimized RAG responses for precision and conciseness with reduced token limits and focused prompts
 - June 16, 2025: Added user-configurable answer verbosity (Concise/Balanced/Comprehensive) with persistent session settings
+- June 16, 2025: Added website coverage calculation for cached content with real-time estimation and statistics
 
 ## Recent Changes
 
