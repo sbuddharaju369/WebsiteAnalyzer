@@ -124,7 +124,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 16, 2025: Implemented authoritative website size estimation using sitemaps and reliable sources with transparent data attribution
 - June 16, 2025: Fixed embedding strategy and similarity calculations - corrected ChromaDB cosine distance conversion, improved chunking parameters (600 tokens with 100 overlap), enhanced content structure for better semantic matching, and refined confidence scoring algorithm
 - June 16, 2025: Implemented comprehensive embedding caching system - embeddings are now saved with cache files and reused when loading cached content, eliminating redundant OpenAI API calls and improving performance for repeated analysis
-- June 16, 2025: Implemented collapsible drawer navigation system for sidebar with compact button labels ("Web", "Cache", "Content") that fit on a single line, improving UI organization and space efficiency
+- June 16, 2025: Implemented collapsible drawer navigation system for sidebar with uniform button layout featuring icons above titles for consistent visual appearance and improved UI organization
 
 ## Recent Changes
 
