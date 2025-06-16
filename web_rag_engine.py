@@ -292,7 +292,7 @@ class WebRAGEngine:
             print(f"Error searching content: {str(e)}")
             return []
     
-    def analyze_content(self, question: str, context_limit: int = 5) -> Dict[str, Any]:
+    def analyze_content(self, question: str, context_limit: int = 5, verbosity: str = 'concise') -> Dict[str, Any]:
         """Analyze content and provide intelligent insights"""
         try:
             # Search for relevant content
@@ -336,8 +336,10 @@ class WebRAGEngine:
             else:
                 confidence = 0.1
             
-            # Generate analysis using OpenAI
-            system_prompt = f"""You are a precise content analyst. Provide brief, accurate answers using only the provided web content.
+            # Configure response style based on verbosity
+            verbosity_configs = {
+                'concise': {
+                    'system_prompt': f"""You are a precise content analyst. Provide brief, accurate answers using only the provided web content.
 
 Domain: {self.crawl_metadata.get('domain', 'Unknown')}
 Total Pages: {self.crawl_metadata.get('total_pages', 0)}
@@ -347,24 +349,64 @@ Guidelines:
 - Use only information from the provided context
 - Be specific and factual
 - If information is insufficient, state this briefly
-- Focus on key facts, not elaboration"""
+- Focus on key facts, not elaboration""",
+                    'user_instruction': "Provide a precise, concise answer based on the content above. Keep it brief and factual.",
+                    'max_tokens': 400,
+                    'temperature': 0.1
+                },
+                'balanced': {
+                    'system_prompt': f"""You are an expert content analyst. Provide clear, well-structured answers using the provided web content.
+
+Domain: {self.crawl_metadata.get('domain', 'Unknown')}
+Total Pages: {self.crawl_metadata.get('total_pages', 0)}
+
+Guidelines:
+- Provide balanced detail - not too brief, not too verbose
+- Use only information from the provided context
+- Include relevant examples and specifics
+- Organize information clearly
+- Explain key concepts when helpful""",
+                    'user_instruction': "Provide a clear, well-structured answer with appropriate detail. Include relevant examples and organize the information logically.",
+                    'max_tokens': 800,
+                    'temperature': 0.2
+                },
+                'comprehensive': {
+                    'system_prompt': f"""You are an expert content analyst. Provide detailed, comprehensive answers using the provided web content.
+
+Domain: {self.crawl_metadata.get('domain', 'Unknown')}
+Total Pages: {self.crawl_metadata.get('total_pages', 0)}
+
+Guidelines:
+- Provide thorough, detailed analysis
+- Use only information from the provided context
+- Include all relevant details, examples, and insights
+- Explain context and implications
+- Structure information with clear sections
+- Highlight patterns and connections""",
+                    'user_instruction': "Provide a comprehensive, detailed analysis based on the content above. Include all relevant information, examples, and insights. Structure your response clearly.",
+                    'max_tokens': 1500,
+                    'temperature': 0.3
+                }
+            }
+            
+            config = verbosity_configs.get(verbosity, verbosity_configs['concise'])
             
             user_prompt = f"""Web Content Context:
 {context}
 
 Question: {question}
 
-Provide a precise, concise answer based on the content above. Keep it brief and factual."""
+{config['user_instruction']}"""
             
             # Get response from OpenAI
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": config['system_prompt']},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=800,
-                temperature=0.1
+                max_tokens=config['max_tokens'],
+                temperature=config['temperature']
             )
             
             answer = response.choices[0].message.content

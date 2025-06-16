@@ -29,7 +29,8 @@ def initialize_session_state():
         'analysis_results': {},
         'cache_files': [],
         'current_domain': None,
-        'crawl_in_progress': False
+        'crawl_in_progress': False,
+        'answer_verbosity': 'concise'  # Options: 'concise', 'balanced', 'comprehensive'
     }
     
     for key, default in defaults.items():
@@ -608,12 +609,32 @@ def main():
                     if st.button(f"❓ {question}", key=f"suggested_{hash(question)}"):
                         st.session_state.current_question = question
         
-        # Question input
-        question = st.text_area(
-            "Your question:",
-            placeholder="Ask anything about the website content...",
-            height=80
-        )
+        # Answer verbosity selector
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            question = st.text_area(
+                "Your question:",
+                placeholder="Ask anything about the website content...",
+                height=80
+            )
+        with col2:
+            st.markdown("**Answer Style:**")
+            verbosity = st.selectbox(
+                "Response level:",
+                options=['concise', 'balanced', 'comprehensive'],
+                index=['concise', 'balanced', 'comprehensive'].index(st.session_state.answer_verbosity),
+                format_func=lambda x: {
+                    'concise': '🎯 Concise',
+                    'balanced': '⚖️ Balanced', 
+                    'comprehensive': '📖 Detailed'
+                }[x],
+                help="Choose how detailed you want the answers to be",
+                label_visibility="collapsed"
+            )
+            
+            # Update session state if changed
+            if verbosity != st.session_state.answer_verbosity:
+                st.session_state.answer_verbosity = verbosity
         
         # Use suggested question if set
         if hasattr(st.session_state, 'current_question'):
@@ -622,10 +643,15 @@ def main():
         
         if question and st.session_state.rag_engine:
             with st.spinner("Analyzing content..."):
-                result = st.session_state.rag_engine.analyze_content(question)
+                result = st.session_state.rag_engine.analyze_content(question, verbosity=st.session_state.answer_verbosity)
                 
-                # Display answer
-                st.markdown("### 🤖 Analysis Result")
+                # Display answer with verbosity indicator
+                verbosity_indicators = {
+                    'concise': '🎯 Concise',
+                    'balanced': '⚖️ Balanced',
+                    'comprehensive': '📖 Detailed'
+                }
+                st.markdown(f"### 🤖 Analysis Result ({verbosity_indicators[st.session_state.answer_verbosity]})")
                 st.markdown(result['answer'])
                 
                 # User-friendly confidence indicator
