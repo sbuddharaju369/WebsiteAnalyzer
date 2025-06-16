@@ -405,15 +405,15 @@ def main():
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("🕷️\nWeb", use_container_width=True):
+            if st.button("🕷️  \nWeb", use_container_width=True):
                 st.session_state.active_drawer = 'crawler' if st.session_state.active_drawer != 'crawler' else None
         
         with col2:
-            if st.button("💾\nCache", use_container_width=True):
+            if st.button("💾  \nCache", use_container_width=True):
                 st.session_state.active_drawer = 'cache' if st.session_state.active_drawer != 'cache' else None
         
         with col3:
-            if st.button("📊\nContent", use_container_width=True):
+            if st.button("📊  \nContent", use_container_width=True):
                 st.session_state.active_drawer = 'overview' if st.session_state.active_drawer != 'overview' else None
         
         st.divider()
@@ -710,10 +710,12 @@ def main():
         # Answer verbosity selector
         col1, col2 = st.columns([3, 1])
         with col1:
+            st.markdown("**Your question:**")
             question = st.text_area(
                 "Your question:",
                 placeholder="Ask anything about the website content...",
-                height=80
+                height=80,
+                label_visibility="collapsed"
             )
         with col2:
             st.markdown("**Answer Style:**")
@@ -810,6 +812,46 @@ def main():
                             🔗 [{source.get('url', 'No URL')}]({source.get('url', '#')})  
                             {relevance_icon} {relevance_text} ({similarity:.1%})
                             """)
+                
+                # Reliability Tips Section - moved here after Sources
+                with st.expander("💡 How to Improve Answer Reliability"):
+                    st.markdown("""
+                    **To get the most reliable answers from the Web Content Analyzer:**
+                    
+                    **1. Crawl More Pages (15-100 recommended)**
+                    - More content = better context for AI analysis
+                    - Diverse pages provide comprehensive coverage
+                    - Current crawl limit can be adjusted in the sidebar
+                    - Check the "Website Coverage" percentage in the sidebar - aim for 50%+ when possible
+                    
+                    **2. Ask Specific Questions**
+                    - Instead of: "Tell me about this site"
+                    - Try: "What are the main product features?" or "What pricing options are available?"
+                    
+                    **3. Use Keywords in Search**
+                    - For semantic search, use specific terms from the website
+                    - Multiple related keywords work better than single words
+                    
+                    **4. Check Source Quality**
+                    - Look at the sources shown with each answer
+                    - Higher similarity scores (70%+) indicate better matches
+                    - Multiple relevant sources increase confidence
+                    
+                    **5. Compare Question vs Search Results**
+                    - Use questions for analysis and summaries
+                    - Use semantic search to verify specific details
+                    
+                    **6. Website Content Quality Matters**
+                    - Well-structured sites with clear content work better
+                    - Sites with lots of text content provide richer analysis
+                    - Technical documentation and product pages are ideal
+                    
+                    **Current Quality Indicators:**
+                    - 🟢 Very Reliable (80%+): High confidence, multiple good sources
+                    - 🟡 Mostly Reliable (60-80%): Good sources, decent coverage
+                    - 🟠 Somewhat Reliable (40-60%): Limited relevant information
+                    - 🔴 Limited Reliability (<40%): Insufficient matching content
+                    """)
         
         # Analytics tabs
         st.markdown("---")
@@ -930,46 +972,7 @@ def main():
             else:
                 st.info("No content available. Crawl a website first.")
         
-        # Reliability Tips Section
-        st.markdown("---")
-        with st.expander("💡 How to Improve Answer Reliability"):
-            st.markdown("""
-            **To get the most reliable answers from the Web Content Analyzer:**
-            
-            **1. Crawl More Pages (15-100 recommended)**
-            - More content = better context for AI analysis
-            - Diverse pages provide comprehensive coverage
-            - Current crawl limit can be adjusted in the sidebar
-            - Check the "Website Coverage" percentage in the sidebar - aim for 50%+ when possible
-            
-            **2. Ask Specific Questions**
-            - Instead of: "Tell me about this site"
-            - Try: "What are the main product features?" or "What pricing options are available?"
-            
-            **3. Use Keywords in Search**
-            - For semantic search, use specific terms from the website
-            - Multiple related keywords work better than single words
-            
-            **4. Check Source Quality**
-            - Look at the sources shown with each answer
-            - Higher similarity scores (70%+) indicate better matches
-            - Multiple relevant sources increase confidence
-            
-            **5. Compare Question vs Search Results**
-            - Use questions for analysis and summaries
-            - Use semantic search to verify specific details
-            
-            **6. Website Content Quality Matters**
-            - Well-structured sites with clear content work better
-            - Sites with lots of text content provide richer analysis
-            - Technical documentation and product pages are ideal
-            
-            **Current Quality Indicators:**
-            - 🟢 Very Reliable (80%+): High confidence, multiple good sources
-            - 🟡 Mostly Reliable (60-80%): Good sources, decent coverage
-            - 🟠 Somewhat Reliable (40-60%): Limited relevant information
-            - 🔴 Limited Reliability (<40%): Insufficient matching content
-            """)
+
 
 if __name__ == "__main__":
     main()
