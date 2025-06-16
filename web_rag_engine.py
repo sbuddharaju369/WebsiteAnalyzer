@@ -126,8 +126,8 @@ class WebRAGEngine:
         except Exception as e:
             print(f"Error clearing collection: {str(e)}")
     
-    def process_web_content(self, web_content: List[Dict[str, Any]], domain: str = None):
-        """Process web content and store in ChromaDB"""
+    def process_web_content(self, web_content: List[Dict[str, Any]], domain: str = None, use_cached_embeddings: bool = True):
+        """Process web content and store in ChromaDB with embedding caching"""
         print(f"Processing {len(web_content)} web pages for RAG...")
         
         # Clear existing data
@@ -141,6 +141,54 @@ class WebRAGEngine:
             'total_words': sum(page.get('word_count', 0) for page in web_content)
         }
         
+        # Check if content already has cached embeddings
+        has_cached_embeddings = all(page.get('embeddings_chunks') for page in web_content)
+        
+        if use_cached_embeddings and has_cached_embeddings:
+            print("Using cached embeddings...")
+            self._load_cached_embeddings(web_content)
+        else:
+            print("Creating new embeddings...")
+            self._create_new_embeddings(web_content)
+    
+    def _load_cached_embeddings(self, web_content: List[Dict[str, Any]]):
+        """Load pre-computed embeddings from cached content"""
+        doc_ids = []
+        doc_texts = []
+        doc_metadatas = []
+        
+        total_chunks = 0
+        for page_idx, page in enumerate(web_content):
+            cached_chunks = page.get('embeddings_chunks', [])
+            total_chunks += len(cached_chunks)
+            
+            for chunk in cached_chunks:
+                doc_ids.append(chunk['id'])
+                doc_texts.append(chunk['text'])
+                doc_metadatas.append(chunk['metadata'])
+        
+        # Add to ChromaDB in batches
+        batch_size = 50
+        for i in range(0, len(doc_ids), batch_size):
+            batch_end = min(i + batch_size, len(doc_ids))
+            batch_ids = doc_ids[i:batch_end]
+            batch_texts = doc_texts[i:batch_end]
+            batch_metadatas = doc_metadatas[i:batch_end]
+            
+            try:
+                self.collection.add(
+                    documents=batch_texts,
+                    metadatas=batch_metadatas,
+                    ids=batch_ids
+                )
+                print(f"Added cached batch {i//batch_size + 1}: {len(batch_ids)} chunks")
+            except Exception as e:
+                print(f"Error adding cached batch {i//batch_size + 1}: {str(e)}")
+        
+        print(f"Successfully loaded {total_chunks} cached chunks from {len(web_content)} pages")
+    
+    def _create_new_embeddings(self, web_content: List[Dict[str, Any]]):
+        """Create new embeddings and store them in content for caching"""
         doc_ids = []
         doc_texts = []
         doc_metadatas = []
@@ -215,6 +263,40 @@ class WebRAGEngine:
                     doc_ids.append(doc_id)
                     doc_texts.append(chunk)
                     doc_metadatas.append(metadata)
+                
+                # Store chunks in page for caching
+                if 'embeddings_chunks' not in page:
+                    page['embeddings_chunks'] = []
+                
+                # Add chunks to page cache
+                for chunk_idx, chunk in enumerate(chunks):
+                    if len(chunk.strip()) < 50:
+                        continue
+                    
+                    doc_id = f"page_{page_idx}_chunk_{chunk_idx}"
+                    metadata = {
+                        'url': url,
+                        'title': title[:200] if title else 'Untitled',
+                        'page_index': str(page_idx),
+                        'chunk_index': str(chunk_idx),
+                        'word_count': str(word_count),
+                        'has_description': str(bool(description)),
+                        'headings_count': str(len(headings)),
+                        'domain': urlparse(url).netloc if url else 'unknown',
+                        'url_path': urlparse(url).path if url else '',
+                        'processed_at': datetime.now().isoformat()
+                    }
+                    
+                    if keywords:
+                        keyword_list = [k.strip() for k in keywords.split(',')][:3]
+                        for i, keyword in enumerate(keyword_list):
+                            metadata[f'keyword_{i}'] = keyword
+                    
+                    page['embeddings_chunks'].append({
+                        'id': doc_id,
+                        'text': chunk,
+                        'metadata': metadata
+                    })
                     
             except Exception as e:
                 print(f"Error processing page {page_idx}: {str(e)}")

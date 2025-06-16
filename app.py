@@ -543,9 +543,9 @@ def main():
                                 
                                 st.session_state.crawl_stats = stats
                             
-                            # Initialize RAG engine
+                            # Initialize RAG engine with cached embeddings
                             rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
-                            rag_engine.process_web_content(content, domain)
+                            rag_engine.process_web_content(content, domain, use_cached_embeddings=True)
                             st.session_state.rag_engine = rag_engine
                             
                             st.success(f"✅ Loaded {len(content)} pages from cache!")
