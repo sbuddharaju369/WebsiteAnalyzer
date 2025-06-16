@@ -593,58 +593,61 @@ def main():
             else:
                 st.info("No cache files found")
         
-        # Content Overview in sidebar
-        if st.session_state.crawled_content:
-            st.markdown("### 📊 Content Overview")
-            
-            # Quick stats
-            stats = st.session_state.crawl_stats
-            if stats:
-                st.metric("Total Pages", stats.get('total_pages', 0))
-                st.metric("Total Words", f"{stats.get('total_words', 0):,}")
-                st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
+        # Content Overview Drawer
+        elif st.session_state.active_drawer == 'overview':
+            if st.session_state.crawled_content:
+                st.markdown("#### 📊 Content Overview")
                 
-                # Coverage percentage if available with source attribution
-                if stats.get('coverage_percentage') is not None:
-                    coverage = stats['coverage_percentage']
-                    estimated_total = stats.get('estimated_total_pages', 0)
+                # Quick stats
+                stats = st.session_state.crawl_stats
+                if stats:
+                    st.metric("Total Pages", stats.get('total_pages', 0))
+                    st.metric("Total Words", f"{stats.get('total_words', 0):,}")
+                    st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
                     
-                    # Color code coverage
-                    if coverage >= 80:
-                        coverage_color = "green"
-                    elif coverage >= 50:
-                        coverage_color = "orange"
+                    # Coverage percentage if available with source attribution
+                    if stats.get('coverage_percentage') is not None:
+                        coverage = stats['coverage_percentage']
+                        estimated_total = stats.get('estimated_total_pages', 0)
+                        
+                        # Color code coverage
+                        if coverage >= 80:
+                            coverage_color = "green"
+                        elif coverage >= 50:
+                            coverage_color = "orange"
+                        else:
+                            coverage_color = "red"
+                        
+                        st.markdown(f"**Website Coverage:** :{coverage_color}[{coverage:.1f}%]")
+                        st.caption(f"Crawled {stats['total_pages']} of {estimated_total} total pages")
+                        
+                        # Show source of size estimation
+                        size_source = stats.get('size_source', 'unknown')
+                        if size_source == 'sitemap':
+                            st.caption(f"📋 Size based on website sitemap analysis")
+                        elif size_source == 'third_party':
+                            service_name = stats.get('size_details', '').split(':')[0] if ':' in stats.get('size_details', '') else 'third-party service'
+                            st.caption(f"🔍 Size estimated using {service_name}")
+                        
                     else:
-                        coverage_color = "red"
-                    
-                    st.markdown(f"**Website Coverage:** :{coverage_color}[{coverage:.1f}%]")
-                    st.caption(f"Crawled {stats['total_pages']} of {estimated_total} total pages")
-                    
-                    # Show source of size estimation
-                    size_source = stats.get('size_source', 'unknown')
-                    if size_source == 'sitemap':
-                        st.caption(f"📋 Size based on website sitemap analysis")
-                    elif size_source == 'third_party':
-                        service_name = stats.get('size_details', '').split(':')[0] if ':' in stats.get('size_details', '') else 'third-party service'
-                        st.caption(f"🔍 Size estimated using {service_name}")
-                    
-                else:
-                    # Check if we have estimation result but no coverage
-                    estimation_result = stats.get('estimation_result', {})
-                    if estimation_result.get('source') == 'unavailable':
-                        st.markdown("**Website Coverage:** :gray[Cannot be calculated]")
-                        st.caption("⚠️ Website does not provide sitemap or reliable page count information")
-                    elif estimation_result.get('source') == 'error':
-                        st.markdown("**Website Coverage:** :gray[Cannot be calculated]")
-                        st.caption("❌ Error analyzing website structure")
-                    else:
-                        st.markdown("**Website Coverage:** :gray[Unknown]")
-                        st.caption("📊 Website size analysis incomplete")
-            
-            # Content summary
-            if st.session_state.rag_engine:
-                summary = st.session_state.rag_engine.get_content_summary()
-                st.markdown("**Content Chunks:** " + str(summary.get('total_chunks', 0)))
+                        # Check if we have estimation result but no coverage
+                        estimation_result = stats.get('estimation_result', {})
+                        if estimation_result.get('source') == 'unavailable':
+                            st.markdown("**Website Coverage:** :gray[Cannot be calculated]")
+                            st.caption("⚠️ Website does not provide sitemap or reliable page count information")
+                        elif estimation_result.get('source') == 'error':
+                            st.markdown("**Website Coverage:** :gray[Cannot be calculated]")
+                            st.caption("❌ Error analyzing website structure")
+                        else:
+                            st.markdown("**Website Coverage:** :gray[Unknown]")
+                            st.caption("📊 Website size analysis incomplete")
+                
+                # Content summary
+                if st.session_state.rag_engine:
+                    summary = st.session_state.rag_engine.get_content_summary()
+                    st.markdown("**Content Chunks:** " + str(summary.get('total_chunks', 0)))
+            else:
+                st.info("No content loaded yet")
     
     # Main content area
     if not st.session_state.crawled_content:
