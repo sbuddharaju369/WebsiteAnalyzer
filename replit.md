@@ -122,6 +122,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 16, 2025: Added user-configurable answer verbosity (Concise/Balanced/Comprehensive) with persistent session settings
 - June 16, 2025: Added website coverage calculation for cached content with real-time estimation and statistics
 - June 16, 2025: Implemented authoritative website size estimation using sitemaps and reliable sources with transparent data attribution
+- June 16, 2025: Fixed embedding strategy and similarity calculations - corrected ChromaDB cosine distance conversion, improved chunking parameters (600 tokens with 100 overlap), enhanced content structure for better semantic matching, and refined confidence scoring algorithm
 
 ## Recent Changes
 

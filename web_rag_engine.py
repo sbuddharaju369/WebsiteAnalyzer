@@ -159,27 +159,31 @@ class WebRAGEngine:
                 if not content:
                     continue
                 
-                # Create enhanced content for embedding
+                # Create enhanced content for better embeddings
+                # Start with the most important content first
                 content_parts = []
                 
+                # Lead with title and main content for better semantic matching
                 if title:
-                    content_parts.append(f"Page Title: {title}")
+                    content_parts.append(title)
                 
                 if description:
-                    content_parts.append(f"Description: {description}")
+                    content_parts.append(description)
                 
+                # Add main content
+                content_parts.append(content)
+                
+                # Add supplementary information
                 if headings:
-                    content_parts.append(f"Headings: {' | '.join(headings[:5])}")
+                    content_parts.append(f"Key sections: {' | '.join(headings[:3])}")
                 
                 if keywords:
-                    content_parts.append(f"Keywords: {keywords}")
+                    content_parts.append(f"Related topics: {keywords}")
                 
-                content_parts.append(f"Content: {content}")
+                full_text = '\n\n'.join(content_parts)
                 
-                full_text = '\n'.join(content_parts)
-                
-                # Smart chunking
-                chunks = self._smart_chunk_text(full_text, max_tokens=400, overlap_tokens=50)
+                # Smart chunking with better parameters for embedding quality
+                chunks = self._smart_chunk_text(full_text, max_tokens=600, overlap_tokens=100)
                 
                 for chunk_idx, chunk in enumerate(chunks):
                     if len(chunk.strip()) < 50:  # Skip very short chunks
@@ -268,8 +272,9 @@ class WebRAGEngine:
                         metadata = results['metadatas'][0][i] if results.get('metadatas') else {}
                         distance = results['distances'][0][i] if results.get('distances') else 0.5
                         
-                        # Fix similarity score calculation - ensure it's between 0 and 1
-                        similarity = max(0.0, min(1.0, 1.0 - distance)) if distance <= 2.0 else max(0.1, 1.0 / (1.0 + distance))
+                        # ChromaDB uses cosine distance (0 = identical, 2 = opposite)
+                        # Convert to similarity score (1 = identical, 0 = opposite)
+                        similarity = max(0.0, 1.0 - (distance / 2.0))
                         
                         result = {
                             'id': results['ids'][0][i],
@@ -295,8 +300,8 @@ class WebRAGEngine:
     def analyze_content(self, question: str, context_limit: int = 5, verbosity: str = 'concise') -> Dict[str, Any]:
         """Analyze content and provide intelligent insights"""
         try:
-            # Search for relevant content
-            relevant_content = self.search_content(question, k=context_limit)
+            # Search for relevant content with more results for better context
+            relevant_content = self.search_content(question, k=min(context_limit * 2, 15))
             
             if not relevant_content:
                 return {
@@ -329,10 +334,21 @@ class WebRAGEngine:
             
             sources = list(unique_sources.values())[:5]  # Limit to 5 unique sources
             
-            # Calculate confidence with better scoring
+            # Calculate confidence based on source quality and relevance
             if sources:
-                avg_similarity = sum(max(0, s['similarity_score']) for s in sources) / len(sources)
-                confidence = min(max(avg_similarity, 0.1), 0.95)  # Keep between 10% and 95%
+                # Weight by both similarity and number of quality sources
+                similarities = [s['similarity_score'] for s in sources]
+                avg_similarity = sum(similarities) / len(similarities)
+                
+                # Boost confidence for multiple good sources
+                source_count_bonus = min(0.1, len(sources) * 0.02)  # Up to 10% bonus for multiple sources
+                
+                # Penalize if top similarity is very low
+                top_similarity = max(similarities) if similarities else 0
+                if top_similarity < 0.3:
+                    confidence = max(0.1, avg_similarity * 0.7)  # Reduce confidence for poor matches
+                else:
+                    confidence = min(0.95, avg_similarity + source_count_bonus)
             else:
                 confidence = 0.1
             
