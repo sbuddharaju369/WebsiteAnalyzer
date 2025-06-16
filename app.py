@@ -120,28 +120,7 @@ class WebContentAnalyzer:
             delay = st.slider("Delay between requests (seconds)", 0.5, 5.0, DEFAULT_DELAY, 0.5)
             st.info("Higher delays are more respectful to websites but take longer")
         
-        # Website size estimation before crawling
-        if url_input and not st.session_state.crawl_in_progress:
-            with st.spinner("Estimating website size..."):
-                try:
-                    from src.core.crawler import WebCrawler
-                    temp_crawler = WebCrawler()
-                    estimation = temp_crawler.estimate_total_pages(url_input)
-                    
-                    if estimation['total_pages']:
-                        st.info(f"📊 Estimated {estimation['total_pages']} total pages")
-                        if estimation['source'] == 'sitemap':
-                            st.caption("📋 Based on sitemap analysis")
-                        elif estimation['source'] == 'robots':
-                            st.caption("🤖 Based on robots.txt references")
-                        elif estimation['source'] == 'dynamic':
-                            st.caption("🔍 Based on dynamic discovery")
-                        else:
-                            st.caption("🌐 Based on third-party estimation")
-                    else:
-                        st.info("📊 Website size estimation unavailable")
-                except:
-                    pass
+
         
         # Crawl button
         if st.button("🔍 Start Crawling", disabled=st.session_state.crawl_in_progress):
@@ -179,7 +158,10 @@ class WebContentAnalyzer:
                 st.metric("Total Words", f"{stats.get('total_words', 0):,}")
                 st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
                 
-                # Coverage percentage if available
+                # Website size estimation section
+                st.markdown("**Website Size Analysis:**")
+                
+                # Check if estimation is already calculated
                 if stats.get('coverage_percentage') is not None:
                     coverage = stats['coverage_percentage']
                     
@@ -191,7 +173,7 @@ class WebContentAnalyzer:
                     else:
                         coverage_color = "red"
                     
-                    st.markdown(f"**Website Coverage:** :{coverage_color}[{coverage:.1f}%]")
+                    st.markdown(f"**Coverage:** :{coverage_color}[{coverage:.1f}%]")
                     st.caption(f"Crawled {stats['total_pages']} of {stats.get('estimated_total_pages', 0)} total pages")
                     
                     # Show source of size estimation with accurate details
@@ -211,6 +193,12 @@ class WebContentAnalyzer:
                         st.caption("⚠️ Size estimation unavailable - showing crawled pages only")
                     else:
                         st.caption("❓ Size estimation method unknown")
+                else:
+                    # Calculate website size estimation in background
+                    if st.button("📊 Calculate Website Coverage", key="estimate_size"):
+                        self.calculate_website_coverage()
+                    else:
+                        st.info("Click above to estimate total website size and coverage percentage")
                 
                 # Content summary
                 if st.session_state.rag_engine:
@@ -218,6 +206,43 @@ class WebContentAnalyzer:
                     st.markdown("**Content Chunks:** " + str(summary.get('total_chunks', 0)))
         else:
             st.info("No content loaded yet")
+
+    def calculate_website_coverage(self):
+        """Calculate website size estimation in background"""
+        if not st.session_state.crawled_content:
+            return
+        
+        with st.spinner("Estimating total website size..."):
+            try:
+                # Get the base URL from crawled content
+                base_url = st.session_state.crawled_content[0]['url']
+                
+                # Create crawler and estimate total pages
+                from src.core.crawler import WebCrawler
+                crawler = WebCrawler()
+                estimation_result = crawler.estimate_total_pages(base_url)
+                
+                # Update stats with estimation
+                stats = st.session_state.crawl_stats.copy()
+                stats['estimation_result'] = estimation_result
+                
+                if estimation_result['total_pages'] is not None:
+                    estimated_total = estimation_result['total_pages']
+                    coverage_percentage = (len(st.session_state.crawled_content) / estimated_total * 100) if estimated_total > 0 else 100
+                    stats.update({
+                        'estimated_total_pages': estimated_total,
+                        'coverage_percentage': coverage_percentage,
+                        'size_source': estimation_result['source'],
+                        'size_details': estimation_result['details']
+                    })
+                    
+                    st.session_state.crawl_stats = stats
+                    st.success(f"Website size estimated: {estimated_total} total pages")
+                else:
+                    st.warning("Unable to estimate website size")
+                    
+            except Exception as e:
+                st.error(f"Error estimating website size: {str(e)}")
 
     def start_crawling(self, url: str, max_pages: int, delay: float):
         """Start the crawling process"""
@@ -351,23 +376,8 @@ class WebContentAnalyzer:
         if content:
             st.session_state.crawled_content = content
             
-            # Calculate statistics
+            # Calculate basic statistics (without website size estimation)
             stats = crawler.get_crawl_stats()
-            
-            # Get website size estimation for coverage
-            estimation_result = crawler.estimate_total_pages(url)
-            stats['estimation_result'] = estimation_result
-            
-            if estimation_result['total_pages'] is not None:
-                estimated_total = estimation_result['total_pages']
-                coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
-                stats.update({
-                    'estimated_total_pages': estimated_total,
-                    'coverage_percentage': coverage_percentage,
-                    'size_source': estimation_result['source'],
-                    'size_details': estimation_result['details']
-                })
-            
             st.session_state.crawl_stats = stats
             
             # Initialize RAG engine and process content
@@ -399,36 +409,19 @@ class WebContentAnalyzer:
                     domain = cache_data.get('domain', urlparse(content[0]['url']).netloc)
                     st.session_state.current_domain = domain
                     
-                    # Calculate coverage for cached content
-                    crawler = WebCrawler()
+                    # Calculate basic content statistics only
                     if content:
-                        base_url = content[0]['url']
-                        estimation_result = crawler.estimate_total_pages(base_url)
-                        
-                        # Calculate content statistics
                         total_words = sum(page.get('word_count', 0) for page in content)
                         avg_words = total_words / len(content) if content else 0
                         
-                        # Store stats for display
+                        # Store basic stats for display (without website size estimation)
                         stats = {
                             'total_pages': len(content),
                             'total_words': total_words,
                             'average_words_per_page': avg_words,
                             'domain': domain,
-                            'source': 'cache',
-                            'estimation_result': estimation_result
+                            'source': 'cache'
                         }
-                        
-                        # Only calculate coverage if we have reliable website size data
-                        if estimation_result['total_pages'] is not None:
-                            estimated_total = estimation_result['total_pages']
-                            coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
-                            stats.update({
-                                'estimated_total_pages': estimated_total,
-                                'coverage_percentage': coverage_percentage,
-                                'size_source': estimation_result['source'],
-                                'size_details': estimation_result['details']
-                            })
                         
                         st.session_state.crawl_stats = stats
                     
