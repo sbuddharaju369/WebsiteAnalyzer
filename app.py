@@ -534,64 +534,64 @@ def main():
                     options=[None] + [f['filename'] for f in cache_files],
                     format_func=format_cache_name
                 )
-            
-            if st.button("📂 Load Cache") and selected_cache:
-                with st.spinner("Loading cached content..."):
-                    try:
-                        with open(selected_cache, 'r') as f:
-                            cache_data = json.load(f)
-                        
-                        content = cache_data.get('content', [])
-                        if content:
-                            st.session_state.crawled_content = content
-                            domain = cache_data.get('domain', urlparse(content[0]['url']).netloc)
-                            st.session_state.current_domain = domain
+                
+                if st.button("📂 Load Cache") and selected_cache:
+                    with st.spinner("Loading cached content..."):
+                        try:
+                            with open(selected_cache, 'r') as f:
+                                cache_data = json.load(f)
                             
-                            # Calculate coverage for cached content
-                            crawler = WebCrawler()
+                            content = cache_data.get('content', [])
                             if content:
-                                base_url = content[0]['url']
-                                estimation_result = crawler.estimate_total_pages(base_url)
+                                st.session_state.crawled_content = content
+                                domain = cache_data.get('domain', urlparse(content[0]['url']).netloc)
+                                st.session_state.current_domain = domain
                                 
-                                # Calculate content statistics
-                                total_words = sum(page.get('word_count', 0) for page in content)
-                                avg_words = total_words / len(content) if content else 0
+                                # Calculate coverage for cached content
+                                crawler = WebCrawler()
+                                if content:
+                                    base_url = content[0]['url']
+                                    estimation_result = crawler.estimate_total_pages(base_url)
+                                    
+                                    # Calculate content statistics
+                                    total_words = sum(page.get('word_count', 0) for page in content)
+                                    avg_words = total_words / len(content) if content else 0
+                                    
+                                    # Store stats for display
+                                    stats = {
+                                        'total_pages': len(content),
+                                        'total_words': total_words,
+                                        'average_words_per_page': avg_words,
+                                        'domain': domain,
+                                        'source': 'cache',
+                                        'estimation_result': estimation_result
+                                    }
+                                    
+                                    # Only calculate coverage if we have reliable website size data
+                                    if estimation_result['total_pages'] is not None:
+                                        estimated_total = estimation_result['total_pages']
+                                        coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
+                                        stats.update({
+                                            'estimated_total_pages': estimated_total,
+                                            'coverage_percentage': coverage_percentage,
+                                            'size_source': estimation_result['source'],
+                                            'size_details': estimation_result['details']
+                                        })
+                                    
+                                    st.session_state.crawl_stats = stats
                                 
-                                # Store stats for display
-                                stats = {
-                                    'total_pages': len(content),
-                                    'total_words': total_words,
-                                    'average_words_per_page': avg_words,
-                                    'domain': domain,
-                                    'source': 'cache',
-                                    'estimation_result': estimation_result
-                                }
+                                # Initialize RAG engine with cached embeddings
+                                rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
+                                rag_engine.process_web_content(content, domain, use_cached_embeddings=True)
+                                st.session_state.rag_engine = rag_engine
                                 
-                                # Only calculate coverage if we have reliable website size data
-                                if estimation_result['total_pages'] is not None:
-                                    estimated_total = estimation_result['total_pages']
-                                    coverage_percentage = (len(content) / estimated_total * 100) if estimated_total > 0 else 100
-                                    stats.update({
-                                        'estimated_total_pages': estimated_total,
-                                        'coverage_percentage': coverage_percentage,
-                                        'size_source': estimation_result['source'],
-                                        'size_details': estimation_result['details']
-                                    })
-                                
-                                st.session_state.crawl_stats = stats
-                            
-                            # Initialize RAG engine with cached embeddings
-                            rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
-                            rag_engine.process_web_content(content, domain, use_cached_embeddings=True)
-                            st.session_state.rag_engine = rag_engine
-                            
-                            st.success(f"✅ Loaded {len(content)} pages from cache!")
-                        else:
-                            st.error("Cache file is empty or corrupted")
-                    except Exception as e:
-                        st.error(f"Error loading cache: {str(e)}")
-        else:
-            st.info("No cache files found")
+                                st.success(f"✅ Loaded {len(content)} pages from cache!")
+                            else:
+                                st.error("Cache file is empty or corrupted")
+                        except Exception as e:
+                            st.error(f"Error loading cache: {str(e)}")
+            else:
+                st.info("No cache files found")
         
         # Content Overview in sidebar
         if st.session_state.crawled_content:
