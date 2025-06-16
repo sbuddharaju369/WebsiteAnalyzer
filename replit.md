@@ -126,6 +126,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 16, 2025: Implemented comprehensive embedding caching system - embeddings are now saved with cache files and reused when loading cached content, eliminating redundant OpenAI API calls and improving performance for repeated analysis
 - June 16, 2025: Implemented collapsible drawer navigation system for sidebar with uniform button layout featuring icons above titles for consistent visual appearance and improved UI organization
 - June 16, 2025: Enhanced UI consistency: fixed sidebar button uniform sizing with proper icon/title separation, matched "Your question:" styling to "Answer Style:" formatting, and repositioned reliability tips below Sources section for better content flow
+- June 16, 2025: Completed comprehensive code refactoring with modular folder structure - organized codebase into logical modules: core/ (crawler, rag_engine), utils/ (cache_manager), ui/ (visualizations), config/ directory for settings, and data/ directory for organized cached files and database storage
 
 ## Recent Changes
 
