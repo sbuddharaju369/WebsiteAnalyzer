@@ -99,18 +99,32 @@ def get_cache_files():
     """Get list of available cache files"""
     cache_files = []
     for file in os.listdir('.'):
-        if file.startswith('cache_') and file.endswith('.json'):
+        # Support both old format (cache_domain_timestamp.json) and new format (domain_date_time_pages.json)
+        if (file.startswith('cache_') or file.endswith('pages.json')) and file.endswith('.json'):
             try:
                 with open(file, 'r') as f:
                     data = json.load(f)
+                    
+                    # Extract domain from filename
+                    if file.startswith('cache_'):
+                        # Old format: cache_www.domain.com_timestamp.json
+                        domain = file.split('_')[1] if len(file.split('_')) > 1 else 'unknown'
+                        domain = domain.replace('www.', '')
+                    else:
+                        # New format: domain_date_time_pages.json
+                        domain = file.split('_')[0]
+                    
                     cache_files.append({
                         'filename': file,
-                        'domain': file.split('_')[1] if len(file.split('_')) > 1 else 'unknown',
+                        'domain': domain,
                         'crawled_at': data.get('crawled_at', 'Unknown'),
                         'total_pages': data.get('total_pages', 0)
                     })
             except:
                 continue
+    
+    # Sort by creation time (newest first)
+    cache_files.sort(key=lambda x: x['crawled_at'], reverse=True)
     return cache_files
 
 def crawl_website(url, max_pages, delay):
@@ -422,24 +436,53 @@ def main():
                 if filename is None:
                     return "Select cache file..."
                 
-                # Extract domain and timestamp from filename
-                parts = filename.split('_')
-                if len(parts) >= 3:
-                    domain = parts[1].replace('www.', '')
-                    timestamp = parts[2].replace('.json', '')
-                    try:
-                        # Parse timestamp and make it user-friendly
-                        from datetime import datetime
-                        dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
-                        date_str = dt.strftime("%B %d, %Y at %I:%M %p")
-                        pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
-                        return f"{domain} - {date_str} ({pages} pages)"
-                    except:
-                        pass
+                # Handle new readable format (domain_date_time_pages.json)
+                if filename.endswith('pages.json'):
+                    parts = filename.replace('.json', '').split('_')
+                    if len(parts) >= 4:
+                        domain = parts[0]
+                        date_part = parts[1]  # e.g., "Dec-15-2025"
+                        time_part = parts[2]  # e.g., "2-28pm"
+                        pages_part = parts[3]  # e.g., "48pages"
+                        
+                        # Convert to more readable format
+                        try:
+                            # Parse date: "Dec-15-2025" -> "December 15, 2025"
+                            date_obj = datetime.strptime(date_part, "%b-%d-%Y")
+                            readable_date = date_obj.strftime("%B %d, %Y")
+                            
+                            # Parse time: "2-28pm" -> "2:28 PM"
+                            time_clean = time_part.replace('pm', ' PM').replace('am', ' AM')
+                            time_clean = time_clean.replace('-', ':')
+                            
+                            # Extract page count
+                            page_count = pages_part.replace('pages', '')
+                            
+                            return f"{domain} - {readable_date} at {time_clean} ({page_count} pages)"
+                        except:
+                            pass
+                
+                # Handle old format (cache_domain_timestamp.json)
+                elif filename.startswith('cache_'):
+                    parts = filename.split('_')
+                    if len(parts) >= 3:
+                        domain = parts[1].replace('www.', '')
+                        timestamp = parts[2].replace('.json', '')
+                        try:
+                            # Parse timestamp and make it user-friendly
+                            dt = datetime.strptime(timestamp, "%Y%m%d%H%M%S")
+                            date_str = dt.strftime("%B %d, %Y at %I:%M %p")
+                            pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
+                            return f"{domain} - {date_str} ({pages} pages)"
+                        except:
+                            pass
                 
                 # Fallback to original format
-                pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
-                return f"{filename} ({pages} pages)"
+                try:
+                    pages = next(f['total_pages'] for f in cache_files if f['filename'] == filename)
+                    return f"{filename} ({pages} pages)"
+                except:
+                    return filename
             
             selected_cache = st.selectbox(
                 "Load from cache:",

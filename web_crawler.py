@@ -166,13 +166,20 @@ class WebCrawler:
     def save_cache(self, filename: str = None) -> str:
         """Save scraped content to cache file"""
         if not filename:
-            # Generate filename based on domain and timestamp
+            # Generate human-readable filename based on domain and timestamp
             if self.scraped_content:
-                domain = urlparse(self.scraped_content[0]['url']).netloc
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"cache_{domain}_{timestamp}.json"
+                domain = urlparse(self.scraped_content[0]['url']).netloc.replace('www.', '')
+                timestamp = datetime.now()
+                
+                # Create readable date format: "Dec-15-2025_2-28pm"
+                date_str = timestamp.strftime("%b-%d-%Y")
+                time_str = timestamp.strftime("%I-%M%p").lower()
+                
+                filename = f"{domain}_{date_str}_{time_str}_{len(self.scraped_content)}pages.json"
             else:
-                filename = f"cache_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                timestamp = datetime.now()
+                date_str = timestamp.strftime("%b-%d-%Y_%I-%M%p").lower()
+                filename = f"crawl_{date_str}_0pages.json"
         
         cache_data = {
             'crawled_at': datetime.now().isoformat(),

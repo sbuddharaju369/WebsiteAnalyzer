@@ -116,6 +116,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 15, 2025: Added comprehensive reliability improvement guide and search vs question explanation
 - June 15, 2025: Implemented website coverage percentage feature with sitemap-based estimation and removed unnecessary UI elements
 - June 15, 2025: Added interactive progress bar with real-time metrics, performance charts, and detailed crawling status
+- June 15, 2025: Implemented human-readable cache file naming system with backwards compatibility
 
 ## Recent Changes
 
@@ -123,7 +124,7 @@ The application follows a modular architecture with clear separation of concerns
 - **Layout Optimization**: Moved Content Overview to sidebar for full-width main interface
 - **Analytics Improvements**: Content analytics charts now display side-by-side for better space utilization
 - **Network Visualization**: Redesigned relationship graph with cleaner node layout, semantic color coding, and reduced clutter (limited to 15 nodes)
-- **Cache Management**: Cache files now display with human-readable timestamps (e.g., "verizon.com - June 15, 2025 at 5:26 PM (47 pages)")
+- **Cache Management**: Cache files now use human-readable naming format (e.g., "verizon.com_Dec-15-2025_2-28pm_48pages.json") and display as "verizon.com - December 15, 2025 at 2:28 PM (48 pages)" in dropdown
 - **Interactive Progress Bar**: Real-time crawling progress with live metrics, performance charts, current page display, and ETA calculations
 
 ### User Experience Improvements
