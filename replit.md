@@ -127,6 +127,7 @@ The application follows a modular architecture with clear separation of concerns
 - June 16, 2025: Implemented collapsible drawer navigation system for sidebar with uniform button layout featuring icons above titles for consistent visual appearance and improved UI organization
 - June 16, 2025: Enhanced UI consistency: fixed sidebar button uniform sizing with proper icon/title separation, matched "Your question:" styling to "Answer Style:" formatting, and repositioned reliability tips below Sources section for better content flow
 - June 16, 2025: Completed comprehensive code refactoring with modular folder structure - organized codebase into logical modules: core/ (crawler, rag_engine), utils/ (cache_manager), ui/ (visualizations), config/ directory for settings, and data/ directory for organized cached files and database storage
+- June 16, 2025: Restored and improved real-time progress tracking with sidebar-based vertical layout, proper aggregated counters, enhanced performance charts showing pages crawled vs content extracted over time, and pre-crawling website size estimation display
 
 ## Recent Changes
 

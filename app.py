@@ -120,6 +120,29 @@ class WebContentAnalyzer:
             delay = st.slider("Delay between requests (seconds)", 0.5, 5.0, DEFAULT_DELAY, 0.5)
             st.info("Higher delays are more respectful to websites but take longer")
         
+        # Website size estimation before crawling
+        if url_input and not st.session_state.crawl_in_progress:
+            with st.spinner("Estimating website size..."):
+                try:
+                    from src.core.crawler import WebCrawler
+                    temp_crawler = WebCrawler()
+                    estimation = temp_crawler.estimate_total_pages(url_input)
+                    
+                    if estimation['total_pages']:
+                        st.info(f"📊 Estimated {estimation['total_pages']} total pages")
+                        if estimation['source'] == 'sitemap':
+                            st.caption("📋 Based on sitemap analysis")
+                        elif estimation['source'] == 'robots':
+                            st.caption("🤖 Based on robots.txt references")
+                        elif estimation['source'] == 'dynamic':
+                            st.caption("🔍 Based on dynamic discovery")
+                        else:
+                            st.caption("🌐 Based on third-party estimation")
+                    else:
+                        st.info("📊 Website size estimation unavailable")
+                except:
+                    pass
+        
         # Crawl button
         if st.button("🔍 Start Crawling", disabled=st.session_state.crawl_in_progress):
             if url_input:
@@ -202,49 +225,51 @@ class WebContentAnalyzer:
         domain = urlparse(url).netloc
         st.session_state.current_domain = domain
         
-        # Create progress tracking containers
-        progress_container = st.container()
-        with progress_container:
-            st.markdown(f"### 🕷️ Crawling {domain}")
+        # Create progress tracking in sidebar
+        with st.sidebar:
+            st.markdown("---")
+            st.markdown(f"### 🕷️ Crawling Progress")
             
-            # Progress metrics
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                pages_visited = st.metric("Pages Visited", 0)
-            with col2:
-                pages_extracted = st.metric("Content Extracted", 0)
-            with col3:
-                current_page_metric = st.metric("Current Page", "Starting...")
-            with col4:
-                eta_metric = st.metric("ETA", "Calculating...")
+            # Create metrics placeholders with vertical stacking
+            pages_visited_placeholder = st.empty()
+            pages_extracted_placeholder = st.empty()
+            progress_bar_placeholder = st.empty()
+            current_page_placeholder = st.empty()
+            eta_placeholder = st.empty()
             
-            # Progress bar
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            # Performance chart placeholder
+            # Performance metrics chart
+            st.markdown("**Performance:**")
             chart_placeholder = st.empty()
             
             # Initialize performance tracking
             performance_data = {
                 'timestamps': [],
-                'pages_per_minute': [],
-                'cumulative_pages': []
+                'visited_pages': [],
+                'extracted_pages': [],
+                'pages_per_minute': []
             }
             start_time = datetime.now()
         
         crawler = WebCrawler(max_pages=max_pages, delay=delay)
         
         def progress_callback(visited, extracted, current_url=None, page_title=None):
-            # Update metrics
-            col1.metric("Pages Visited", visited)
-            col2.metric("Content Extracted", extracted)
+            # Update metrics in sidebar with vertical layout
+            pages_visited_placeholder.metric("📄 Pages Visited", visited)
+            pages_extracted_placeholder.metric("✅ Content Extracted", extracted)
             
-            if current_url:
-                current_page_display = current_url.split('/')[-1][:30] + "..." if len(current_url.split('/')[-1]) > 30 else current_url.split('/')[-1]
-                col3.metric("Current Page", current_page_display)
+            # Progress bar
+            progress = min(visited / max_pages, 1.0)
+            progress_bar_placeholder.progress(progress, text=f"{progress:.0%} Complete")
             
-            # Calculate ETA
+            # Current page being processed
+            if current_url and page_title:
+                title_display = page_title[:40] + "..." if len(page_title) > 40 else page_title
+                current_page_placeholder.info(f"🔍 **Current:** {title_display}")
+            elif current_url:
+                url_display = current_url.split('/')[-1][:40] + "..." if len(current_url.split('/')[-1]) > 40 else current_url.split('/')[-1]
+                current_page_placeholder.info(f"🔍 **Current:** {url_display}")
+            
+            # Calculate and display ETA
             elapsed = (datetime.now() - start_time).total_seconds()
             if visited > 0 and elapsed > 0:
                 rate = visited / (elapsed / 60)  # pages per minute
@@ -259,52 +284,69 @@ class WebContentAnalyzer:
                     hours = eta_minutes / 60
                     eta_display = f"{hours:.1f} hrs"
                 
-                col4.metric("ETA", eta_display)
+                eta_placeholder.info(f"⏱️ **ETA:** {eta_display}")
                 
                 # Update performance data
                 performance_data['timestamps'].append(elapsed / 60)
+                performance_data['visited_pages'].append(visited)
+                performance_data['extracted_pages'].append(extracted)
                 performance_data['pages_per_minute'].append(rate)
-                performance_data['cumulative_pages'].append(visited)
                 
-                # Update performance chart every 5 pages
-                if visited % 5 == 0 and len(performance_data['timestamps']) > 1:
+                # Update performance chart every 3 pages
+                if visited % 3 == 0 and len(performance_data['timestamps']) > 1:
                     try:
                         import plotly.graph_objects as go
                         fig = go.Figure()
+                        
+                        # Pages crawled over time
                         fig.add_trace(go.Scatter(
                             x=performance_data['timestamps'],
-                            y=performance_data['pages_per_minute'],
+                            y=performance_data['visited_pages'],
                             mode='lines+markers',
-                            name='Pages/Min',
-                            line=dict(color='#1f77b4')
+                            name='Pages Crawled',
+                            line=dict(color='#1f77b4', width=2),
+                            marker=dict(size=4)
                         ))
+                        
+                        # Content extracted over time
+                        fig.add_trace(go.Scatter(
+                            x=performance_data['timestamps'],
+                            y=performance_data['extracted_pages'],
+                            mode='lines+markers',
+                            name='Content Extracted',
+                            line=dict(color='#2ca02c', width=2),
+                            marker=dict(size=4)
+                        ))
+                        
                         fig.update_layout(
-                            title="Crawling Performance",
-                            xaxis_title="Time (minutes)",
-                            yaxis_title="Pages per Minute",
-                            height=200,
-                            showlegend=False
+                            title="Progress Over Time",
+                            xaxis_title="Time (min)",
+                            yaxis_title="Pages",
+                            height=180,
+                            showlegend=True,
+                            legend=dict(
+                                orientation="h",
+                                yanchor="bottom",
+                                y=1.02,
+                                xanchor="right",
+                                x=1
+                            ),
+                            margin=dict(l=0, r=0, t=25, b=0)
                         )
                         chart_placeholder.plotly_chart(fig, use_container_width=True)
                     except:
                         pass
-            
-            # Update progress bar
-            progress = min(visited / max_pages, 1.0)
-            progress_bar.progress(progress)
-            
-            # Update status
-            if page_title:
-                title_display = page_title[:50] + "..." if len(page_title) > 50 else page_title
-                status_text.text(f"Processing: {title_display}")
-            else:
-                status_text.text(f"Crawling page {visited}/{max_pages}")
         
         # Crawl the website
         content = crawler.crawl_website(url, progress_callback=progress_callback)
         
-        # Clear progress display and show results
-        progress_container.empty()
+        # Clear progress display after crawling
+        with st.sidebar:
+            st.markdown("---")
+            if content:
+                st.success(f"✅ Crawling completed: {len(content)} pages")
+            else:
+                st.error("❌ Crawling failed")
         
         if content:
             st.session_state.crawled_content = content
