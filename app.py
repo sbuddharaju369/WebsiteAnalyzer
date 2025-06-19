@@ -117,6 +117,89 @@ class SimpleWebCrawler:
             'total_words': total_words,
             'average_words_per_page': avg_words
         }
+    
+    def estimate_total_pages(self, start_url: str) -> Dict[str, Any]:
+        """Estimate total number of pages using authoritative sources"""
+        try:
+            parsed_url = urlparse(start_url)
+            domain = parsed_url.netloc
+            base_url = f"{parsed_url.scheme}://{domain}"
+            
+            # Try sitemap.xml first
+            sitemap_urls = [
+                f"{base_url}/sitemap.xml",
+                f"{base_url}/sitemap_index.xml",
+                f"{start_url.rstrip('/')}/sitemap.xml"
+            ]
+            
+            for sitemap_url in sitemap_urls:
+                try:
+                    response = requests.get(sitemap_url, timeout=10)
+                    if response.status_code == 200:
+                        # Count URLs in sitemap
+                        soup = BeautifulSoup(response.content, 'xml')
+                        urls = soup.find_all(['url', 'sitemap'])
+                        
+                        if urls:
+                            url_count = len(urls)
+                            return {
+                                'total_pages': url_count,
+                                'source': 'sitemap',
+                                'details': f"Found {url_count} URLs in sitemap.xml",
+                                'confidence': 'high'
+                            }
+                except:
+                    continue
+            
+            # Try robots.txt for sitemap references
+            try:
+                robots_url = f"{base_url}/robots.txt"
+                response = requests.get(robots_url, timeout=10)
+                if response.status_code == 200:
+                    robots_content = response.text
+                    sitemap_lines = [line for line in robots_content.split('\n') 
+                                   if line.strip().lower().startswith('sitemap:')]
+                    
+                    if sitemap_lines:
+                        # Try each sitemap found in robots.txt
+                        for sitemap_line in sitemap_lines:
+                            sitemap_url = sitemap_line.split(':', 1)[1].strip()
+                            try:
+                                response = requests.get(sitemap_url, timeout=10)
+                                if response.status_code == 200:
+                                    soup = BeautifulSoup(response.content, 'xml')
+                                    urls = soup.find_all(['url', 'sitemap'])
+                                    if urls:
+                                        url_count = len(urls)
+                                        return {
+                                            'total_pages': url_count,
+                                            'source': 'robots',
+                                            'details': f"Found {url_count} URLs via robots.txt sitemap",
+                                            'confidence': 'medium'
+                                        }
+                            except:
+                                continue
+            except:
+                pass
+            
+            # Fallback: estimate based on crawled content
+            crawled_count = len(self.crawled_content) if self.crawled_content else 1
+            estimated = max(crawled_count * 2, 10)  # Conservative estimate
+            
+            return {
+                'total_pages': estimated,
+                'source': 'crawled',
+                'details': f"Estimated based on {crawled_count} crawled pages",
+                'confidence': 'low'
+            }
+            
+        except Exception as e:
+            return {
+                'total_pages': None,
+                'source': 'error',
+                'details': f"Error estimating size: {str(e)}",
+                'confidence': 'none'
+            }
 
 
 class SimpleRAGEngine:
@@ -470,8 +553,74 @@ class WebContentAnalyzer:
                 st.metric("Total Pages", stats.get('total_pages', 0))
                 st.metric("Total Words", f"{stats.get('total_words', 0):,}")
                 st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
+                
+                # Website coverage estimation
+                if 'estimated_total_pages' in stats:
+                    estimated_total = stats['estimated_total_pages']
+                    coverage_percentage = stats.get('coverage_percentage', 0)
+                    size_source = stats.get('size_source', 'unknown')
+                    
+                    st.markdown("**Website Coverage:**")
+                    st.progress(coverage_percentage / 100)
+                    st.caption(f"{coverage_percentage:.1f}% of estimated {estimated_total} total pages")
+                    
+                    if size_source == 'sitemap':
+                        st.caption("📊 Size estimated from sitemap.xml")
+                    elif size_source == 'robots':
+                        st.caption("🤖 Size estimated from robots.txt")
+                    elif size_source == 'crawled':
+                        st.caption("⚠️ Size estimation unavailable - showing crawled pages only")
+                    else:
+                        st.caption("❓ Size estimation method unknown")
+                else:
+                    # Calculate website size estimation in background
+                    if st.button("📊 Calculate Website Coverage", key="estimate_size"):
+                        self.calculate_website_coverage()
+                    else:
+                        st.info("Click above to estimate total website size and coverage percentage")
+                
+                # Content summary
+                if st.session_state.rag_engine:
+                    summary = st.session_state.rag_engine.get_content_summary()
+                    st.markdown("**Content Chunks:** " + str(summary.get('total_chunks', 0)))
         else:
             st.info("No content loaded yet")
+
+    def calculate_website_coverage(self):
+        """Calculate website size estimation in background"""
+        if not st.session_state.crawled_content:
+            return
+        
+        with st.spinner("Estimating total website size..."):
+            try:
+                # Get the base URL from crawled content
+                base_url = st.session_state.crawled_content[0]['url']
+                
+                # Create crawler and estimate total pages
+                crawler = SimpleWebCrawler()
+                estimation_result = crawler.estimate_total_pages(base_url)
+                
+                # Update stats with estimation
+                stats = st.session_state.crawl_stats.copy()
+                stats['estimation_result'] = estimation_result
+                
+                if estimation_result['total_pages'] is not None:
+                    estimated_total = estimation_result['total_pages']
+                    coverage_percentage = (len(st.session_state.crawled_content) / estimated_total * 100) if estimated_total > 0 else 100
+                    stats.update({
+                        'estimated_total_pages': estimated_total,
+                        'coverage_percentage': coverage_percentage,
+                        'size_source': estimation_result['source'],
+                        'size_details': estimation_result['details']
+                    })
+                    
+                    st.session_state.crawl_stats = stats
+                    st.success(f"Website size estimated: {estimated_total} total pages")
+                else:
+                    st.warning("Unable to estimate website size")
+                    
+            except Exception as e:
+                st.error(f"Error estimating website size: {str(e)}")
     
     def start_crawling(self, url: str, max_pages: int, delay: float):
         """Start crawling process"""
@@ -487,8 +636,18 @@ class WebContentAnalyzer:
             pages_extracted_placeholder = st.empty()
             progress_bar_placeholder = st.empty()
             current_page_placeholder = st.empty()
+            eta_placeholder = st.empty()
+            performance_chart_placeholder = st.empty()
             
             start_time = datetime.now()
+            
+            # Initialize performance tracking data
+            performance_data = {
+                'timestamps': [],
+                'pages_visited': [],
+                'content_extracted': [],
+                'crawl_rate': []
+            }
         
         crawler = SimpleWebCrawler(max_pages=max_pages, delay=delay)
         
@@ -502,6 +661,72 @@ class WebContentAnalyzer:
             if current_url and page_title:
                 title_display = page_title[:40] + "..." if len(page_title) > 40 else page_title
                 current_page_placeholder.info(f"🔍 **Current:** {title_display}")
+            
+            # Calculate ETA and update performance tracking
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if visited > 0 and elapsed > 0:
+                rate = visited / (elapsed / 60)  # pages per minute
+                remaining = max_pages - visited
+                eta_minutes = remaining / rate if rate > 0 else 0
+                
+                if eta_minutes < 1:
+                    eta_display = "< 1 min"
+                elif eta_minutes < 60:
+                    eta_display = f"{eta_minutes:.0f} min"
+                else:
+                    hours = eta_minutes / 60
+                    eta_display = f"{hours:.1f} hrs"
+                
+                eta_placeholder.info(f"⏱️ **ETA:** {eta_display}")
+                
+                # Update performance data
+                current_time = elapsed / 60  # in minutes
+                performance_data['timestamps'].append(current_time)
+                performance_data['pages_visited'].append(visited)
+                performance_data['content_extracted'].append(extracted)
+                performance_data['crawl_rate'].append(rate)
+                
+                # Update real-time performance chart
+                if len(performance_data['timestamps']) > 1 and visited % 2 == 0:
+                    try:
+                        import plotly.graph_objects as go
+                        
+                        fig = go.Figure()
+                        
+                        # Add pages visited trace
+                        fig.add_trace(go.Scatter(
+                            x=performance_data['timestamps'],
+                            y=performance_data['pages_visited'],
+                            mode='lines+markers',
+                            name='Pages Visited',
+                            line=dict(color='#1f77b4', width=2),
+                            marker=dict(size=4)
+                        ))
+                        
+                        # Add content extracted trace
+                        fig.add_trace(go.Scatter(
+                            x=performance_data['timestamps'],
+                            y=performance_data['content_extracted'],
+                            mode='lines+markers',
+                            name='Content Extracted',
+                            line=dict(color='#ff7f0e', width=2),
+                            marker=dict(size=4)
+                        ))
+                        
+                        fig.update_layout(
+                            title="Real-time Crawling Performance",
+                            title_font_size=12,
+                            xaxis_title="Time (minutes)",
+                            yaxis_title="Pages",
+                            height=180,
+                            margin=dict(l=0, r=0, t=30, b=0),
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                            showlegend=True
+                        )
+                        
+                        performance_chart_placeholder.plotly_chart(fig, use_container_width=True)
+                    except ImportError:
+                        pass  # Skip chart if plotly not available
         
         content = crawler.crawl_website(url, progress_callback=progress_callback)
         
