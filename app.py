@@ -834,7 +834,365 @@ class WebContentAnalyzer:
                         
                         if 'chunks_used' in result:
                             st.markdown(f"**Chunks analyzed:** {result['chunks_used']}")
+        
+        # Add comprehensive analytics section
+        st.markdown("---")
+        st.markdown("### 📊 Content Analytics & Tools")
+        
+        # Main tabs for different functionalities
+        tab1, tab2, tab3 = st.tabs(["📊 Analytics", "🔍 Semantic Search", "📄 Raw Content"])
+        
+        with tab1:
+            self.render_analytics_tab()
+        
+        with tab2:
+            self.render_search_tab()
+            
+        with tab3:
+            self.render_content_tab()
     
+    def render_analytics_tab(self):
+        """Render comprehensive analytics with visualizations"""
+        if not st.session_state.crawled_content:
+            st.info("No content available for analysis")
+            return
+            
+        stats = st.session_state.crawl_stats
+        content = st.session_state.crawled_content
+        
+        # Key metrics overview
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Pages", stats.get('total_pages', 0))
+        with col2:
+            st.metric("Total Words", f"{stats.get('total_words', 0):,}")
+        with col3:
+            st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
+        with col4:
+            if st.session_state.rag_engine:
+                summary = st.session_state.rag_engine.get_content_summary()
+                st.metric("Content Chunks", summary.get('total_chunks', 0))
+        
+        st.markdown("---")
+        
+        # Advanced analytics with visualizations
+        try:
+            import plotly.express as px
+            import plotly.graph_objects as go
+            
+            # Content analysis
+            word_counts = [page.get('word_count', 0) for page in content]
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Word count distribution
+                fig_hist = px.histogram(
+                    x=word_counts,
+                    title="📊 Word Count Distribution",
+                    labels={'x': 'Words per Page', 'y': 'Number of Pages'},
+                    nbins=min(20, len(set(word_counts))),
+                    color_discrete_sequence=['#1f77b4']
+                )
+                fig_hist.update_layout(height=300, showlegend=False)
+                st.plotly_chart(fig_hist, use_container_width=True)
+                
+                # Top pages by content
+                top_pages = sorted(content, key=lambda x: x.get('word_count', 0), reverse=True)[:5]
+                st.markdown("**📈 Top Pages by Content:**")
+                for i, page in enumerate(top_pages):
+                    st.write(f"{i+1}. **{page.get('title', 'Untitled')[:40]}...** ({page.get('word_count', 0)} words)")
+            
+            with col2:
+                # URL depth analysis
+                url_depths = []
+                for page in content:
+                    url = page.get('url', '')
+                    depth = len([p for p in url.split('/') if p and p not in ['http:', 'https:']]) - 1
+                    url_depths.append(max(0, depth))
+                
+                fig_depth = px.histogram(
+                    x=url_depths,
+                    title="🌐 Page Depth Distribution",
+                    labels={'x': 'URL Depth Level', 'y': 'Number of Pages'},
+                    nbins=max(1, max(url_depths) if url_depths else 1),
+                    color_discrete_sequence=['#ff7f0e']
+                )
+                fig_depth.update_layout(height=300, showlegend=False)
+                st.plotly_chart(fig_depth, use_container_width=True)
+                
+                # Content quality insights
+                st.markdown("**📋 Content Quality Insights:**")
+                if word_counts:
+                    avg_words = sum(word_counts) / len(word_counts)
+                    high_quality = len([w for w in word_counts if w > avg_words * 1.5])
+                    low_quality = len([w for w in word_counts if w < avg_words * 0.5])
+                    
+                    st.write(f"• **High-content pages:** {high_quality} ({high_quality/len(content)*100:.1f}%)")
+                    st.write(f"• **Low-content pages:** {low_quality} ({low_quality/len(content)*100:.1f}%)")
+                    st.write(f"• **Average depth:** {sum(url_depths)/len(url_depths):.1f} levels")
+            
+            # Network visualization
+            if len(content) <= 15:
+                st.markdown("### 🕸️ Page Relationship Network")
+                self.create_simple_network_visualization(content)
+                
+        except ImportError:
+            # Fallback for when plotly is not available
+            st.info("📊 **Basic Analytics** (Install plotly for advanced visualizations)")
+            
+            # Simple text-based analytics
+            word_counts = [page.get('word_count', 0) for page in content]
+            if word_counts:
+                st.write(f"**Content Statistics:**")
+                st.write(f"• Longest page: {max(word_counts)} words")
+                st.write(f"• Shortest page: {min(word_counts)} words")
+                st.write(f"• Median words: {sorted(word_counts)[len(word_counts)//2]} words")
+                
+                # Show top pages
+                top_pages = sorted(content, key=lambda x: x.get('word_count', 0), reverse=True)[:3]
+                st.write("**Top Pages by Content:**")
+                for i, page in enumerate(top_pages):
+                    st.write(f"{i+1}. {page.get('title', 'Untitled')[:50]}... ({page.get('word_count', 0)} words)")
+    
+    def create_simple_network_visualization(self, content):
+        """Create a simple network visualization using available tools"""
+        try:
+            from streamlit_agraph import agraph, Node, Edge, Config
+            
+            nodes = []
+            edges = []
+            
+            # Create nodes for each page (limit to 10 for clarity)
+            for i, page in enumerate(content[:10]):
+                title = page.get('title', f'Page {i+1}')
+                short_title = title[:15] + "..." if len(title) > 15 else title
+                word_count = page.get('word_count', 100)
+                
+                # Node size based on content length
+                size = max(15, min(40, word_count / 20))
+                
+                nodes.append(Node(
+                    id=str(i),
+                    label=short_title,
+                    size=size,
+                    color="#1f77b4" if word_count > 200 else "#ff7f0e"
+                ))
+            
+            # Create edges based on URL similarity
+            for i, page1 in enumerate(content[:10]):
+                for j, page2 in enumerate(content[:10]):
+                    if i < j:  # Avoid duplicate edges
+                        url1_parts = set(page1.get('url', '').split('/'))
+                        url2_parts = set(page2.get('url', '').split('/'))
+                        
+                        # Connect pages with similar URL structures
+                        shared_parts = url1_parts.intersection(url2_parts)
+                        if len(shared_parts) > 2:  # More than just protocol and domain
+                            edges.append(Edge(source=str(i), target=str(j), type="CURVE_SMOOTH"))
+            
+            config = Config(
+                width=700,
+                height=400,
+                directed=False,
+                physics=True,
+                hierarchical=False,
+                nodeHighlightBehavior=True,
+                highlightColor="#F7A7A6"
+            )
+            
+            if nodes:
+                agraph(nodes=nodes, edges=edges, config=config)
+            else:
+                st.info("Network visualization requires page data")
+                
+        except ImportError:
+            st.info("Network visualization requires streamlit-agraph package")
+    
+    def render_search_tab(self):
+        """Render comprehensive semantic search interface"""
+        st.markdown("### 🔍 Semantic Search")
+        
+        # Explanation section
+        with st.expander("ℹ️ How Semantic Search Works"):
+            st.markdown("""
+            **Semantic Search vs AI Questions:**
+            - **Semantic Search**: Finds relevant content chunks using keyword matching and relevance scoring
+            - **AI Questions**: Uses GPT-4 to analyze content and provide intelligent answers
+            
+            **Search Features:**
+            - Searches across all content chunks for maximum coverage
+            - Ranks results by relevance score (word overlap + proximity)
+            - Shows exact content snippets with source attribution
+            - No AI interpretation - pure content retrieval
+            """)
+        
+        # Search interface
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            search_query = st.text_input(
+                "Search query:",
+                placeholder="Enter keywords, phrases, or topics to find relevant content...",
+                help="Use specific terms for better results. Multiple keywords will be searched across all content."
+            )
+        
+        with col2:
+            max_results = st.selectbox("Max results:", [5, 10, 15, 20], index=1)
+        
+        if search_query and st.session_state.rag_engine:
+            with st.spinner("Searching through content chunks..."):
+                # Perform semantic search
+                results = st.session_state.rag_engine._semantic_search(search_query, k=max_results)
+                
+                if results:
+                    st.success(f"Found {len(results)} relevant results (sorted by relevance)")
+                    
+                    # Display results with enhanced formatting
+                    for i, result in enumerate(results):
+                        relevance = result['relevance']
+                        metadata = result['metadata']
+                        chunk = result['chunk']
+                        
+                        # Color code relevance
+                        if relevance >= 0.3:
+                            relevance_color = "🟢"
+                            relevance_text = "High"
+                        elif relevance >= 0.15:
+                            relevance_color = "🟡"
+                            relevance_text = "Medium"
+                        else:
+                            relevance_color = "🟠"
+                            relevance_text = "Low"
+                        
+                        with st.expander(f"{relevance_color} **Result {i+1}**: {metadata['title'][:60]}... | Relevance: {relevance_text} ({relevance:.3f})"):
+                            col1, col2 = st.columns([2, 1])
+                            
+                            with col2:
+                                st.markdown("**Source Information:**")
+                                st.write(f"**Page:** {metadata['title']}")
+                                st.write(f"**URL:** {metadata['url']}")
+                                st.write(f"**Relevance:** {relevance:.3f}")
+                                st.write(f"**Word Count:** {metadata.get('word_count', 'N/A')}")
+                                
+                                # Highlight matching terms
+                                query_words = set(search_query.lower().split())
+                                chunk_words = set(chunk.lower().split())
+                                matches = query_words.intersection(chunk_words)
+                                
+                                if matches:
+                                    st.write(f"**Matching terms:** {', '.join(matches)}")
+                            
+                            with col1:
+                                st.markdown("**Content Preview:**")
+                                
+                                # Highlight search terms in preview
+                                preview = chunk[:800] + "..." if len(chunk) > 800 else chunk
+                                
+                                # Simple highlighting
+                                highlighted_preview = preview
+                                for word in search_query.split():
+                                    if len(word) > 2:
+                                        highlighted_preview = highlighted_preview.replace(
+                                            word, f"**{word}**"
+                                        )
+                                        highlighted_preview = highlighted_preview.replace(
+                                            word.lower(), f"**{word.lower()}**"
+                                        )
+                                        highlighted_preview = highlighted_preview.replace(
+                                            word.capitalize(), f"**{word.capitalize()}**"
+                                        )
+                                
+                                st.markdown(highlighted_preview)
+                                
+                                # Full content toggle
+                                if st.button(f"Show full content", key=f"full_{i}"):
+                                    st.text_area("Full chunk content:", chunk, height=200, key=f"content_{i}")
+                    
+                    # Search statistics
+                    st.markdown("---")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        avg_relevance = sum(r['relevance'] for r in results) / len(results)
+                        st.metric("Average Relevance", f"{avg_relevance:.3f}")
+                    
+                    with col2:
+                        high_relevance = len([r for r in results if r['relevance'] >= 0.2])
+                        st.metric("High Relevance Results", high_relevance)
+                    
+                    with col3:
+                        total_chunks = len(st.session_state.rag_engine.chunks)
+                        coverage = (len(results) / total_chunks * 100) if total_chunks > 0 else 0
+                        st.metric("Search Coverage", f"{coverage:.1f}%")
+                        
+                else:
+                    st.warning("No relevant content found. Try different keywords or broader search terms.")
+                    
+                    # Search suggestions
+                    if st.session_state.rag_engine and hasattr(st.session_state.rag_engine, 'chunks'):
+                        st.info("**Search Tips:**")
+                        st.write("• Try broader terms or synonyms")
+                        st.write("• Use multiple related keywords")
+                        st.write("• Check spelling and try variations")
+        
+        elif search_query and not st.session_state.rag_engine:
+            st.error("Search functionality requires content to be loaded and processed first.")
+    
+    def render_content_tab(self):
+        """Render the raw content tab with detailed page information"""
+        st.markdown("### 📄 Raw Content Browser")
+        
+        if not st.session_state.crawled_content:
+            st.info("No content available")
+            return
+            
+        # Content selector
+        content = st.session_state.crawled_content
+        page_options = [f"{i+1}. {page.get('title', 'Untitled')[:50]}..." for i, page in enumerate(content)]
+        
+        selected_page_idx = st.selectbox("Select page to view:", range(len(page_options)), format_func=lambda x: page_options[x])
+        
+        if selected_page_idx is not None:
+            page = content[selected_page_idx]
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col2:
+                st.markdown("**📋 Page Information:**")
+                st.write(f"**Title:** {page.get('title', 'N/A')}")
+                st.write(f"**URL:** {page.get('url', 'N/A')}")
+                st.write(f"**Word Count:** {page.get('word_count', 'N/A')}")
+                
+                if 'timestamp' in page:
+                    st.write(f"**Crawled:** {page['timestamp']}")
+                
+                if st.session_state.rag_engine and hasattr(st.session_state.rag_engine, 'chunks'):
+                    # Show chunks for this page
+                    page_chunks = [i for i, meta in enumerate(st.session_state.rag_engine.chunk_metadata) 
+                                 if meta['url'] == page.get('url')]
+                    st.write(f"**Content Chunks:** {len(page_chunks)}")
+                    
+                    if page_chunks:
+                        chunk_sizes = [len(st.session_state.rag_engine.chunks[i].split()) for i in page_chunks]
+                        st.write(f"**Avg Chunk Size:** {sum(chunk_sizes)/len(chunk_sizes):.0f} words")
+            
+            with col1:
+                st.markdown("**📄 Page Content:**")
+                content_text = page.get('content', 'No content available')
+                st.text_area("Page content:", content_text, height=400, disabled=True)
+                
+                # Show individual chunks if available
+                if st.session_state.rag_engine and hasattr(st.session_state.rag_engine, 'chunks'):
+                    page_chunks = [i for i, meta in enumerate(st.session_state.rag_engine.chunk_metadata) 
+                                 if meta['url'] == page.get('url')]
+                    
+                    if page_chunks and st.checkbox("Show content chunks"):
+                        st.markdown("**🧩 Content Chunks:**")
+                        for i, chunk_idx in enumerate(page_chunks):
+                            with st.expander(f"Chunk {i+1} ({len(st.session_state.rag_engine.chunks[chunk_idx].split())} words)"):
+                                st.text(st.session_state.rag_engine.chunks[chunk_idx])
+
     def run(self):
         """Run the application"""
         if not self.check_openai_key():
