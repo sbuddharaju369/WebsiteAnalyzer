@@ -463,6 +463,151 @@ class WebContentAnalyzer:
                 
                 st.markdown(f"### Answer ({verbosity_indicators[verbosity]})")
                 st.markdown(result['answer'])
+                
+                # Show sources if available
+                if result.get('sources'):
+                    st.markdown("### Sources")
+                    for i, source in enumerate(result['sources'][:5], 1):
+                        st.markdown(f"**{i}.** [{source.get('title', 'Untitled')}]({source.get('url', '#')})")
+                
+                # Show confidence if available
+                if 'confidence' in result:
+                    confidence = result['confidence']
+                    if confidence > 0.8:
+                        st.success(f"High confidence response (Score: {confidence:.2f})")
+                    elif confidence > 0.6:
+                        st.info(f"Medium confidence response (Score: {confidence:.2f})")
+                    else:
+                        st.warning(f"Lower confidence response (Score: {confidence:.2f})")
+        
+        # Analytics, Search, and Content tabs
+        st.divider()
+        self.render_analytics_tabs()
+    
+    def render_analytics_tabs(self):
+        """Render the analytics section with tabs"""
+        if not st.session_state.crawled_content:
+            return
+            
+        tab1, tab2, tab3 = st.tabs(["📊 Analytics", "🔍 Search", "📄 Content"])
+        
+        with tab1:
+            self.render_analytics_tab()
+        
+        with tab2:
+            self.render_search_tab()
+            
+        with tab3:
+            self.render_content_tab()
+    
+    def render_analytics_tab(self):
+        """Render the analytics tab"""
+        stats = st.session_state.crawl_stats
+        if not stats:
+            st.info("No analytics data available.")
+            return
+            
+        # Overview metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Pages", stats.get('total_pages', 0))
+        with col2:
+            st.metric("Total Words", f"{stats.get('total_words', 0):,}")
+        with col3:
+            st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
+        with col4:
+            if st.session_state.rag_engine:
+                summary = st.session_state.rag_engine.get_content_summary()
+                st.metric("Content Chunks", summary.get('total_chunks', 0))
+        
+        # Create simple visualizations
+        content = st.session_state.crawled_content
+        if content:
+            # Word count distribution
+            word_counts = [page.get('word_count', len(page.get('content', '').split())) for page in content]
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("#### Word Count Distribution")
+                st.bar_chart(word_counts)
+            
+            with col2:
+                st.markdown("#### Page Statistics")
+                st.write(f"**Total Pages:** {len(content)}")
+                st.write(f"**Average Words:** {sum(word_counts)/len(word_counts):.0f}")
+                st.write(f"**Min Words:** {min(word_counts)}")
+                st.write(f"**Max Words:** {max(word_counts)}")
+    
+    def render_search_tab(self):
+        """Render the semantic search tab"""
+        if not st.session_state.rag_engine:
+            st.info("Search functionality requires content to be processed first.")
+            return
+        
+        st.markdown("#### 🔍 Semantic Search")
+        search_query = st.text_input(
+            "Search query:",
+            placeholder="Enter keywords to search through the content...",
+            help="Search for specific topics, keywords, or concepts within the crawled content"
+        )
+        
+        if search_query:
+            with st.spinner("Searching content..."):
+                results = st.session_state.rag_engine._semantic_search(search_query, k=10)
+                
+                if results:
+                    st.success(f"Found {len(results)} relevant results")
+                    
+                    for i, result in enumerate(results, 1):
+                        with st.expander(f"Result {i}: {result['metadata']['title'][:60]}..."):
+                            st.markdown(f"**Relevance:** {result['similarity']:.2f}")
+                            st.markdown(f"**URL:** {result['metadata']['url']}")
+                            st.markdown(f"**Content:**")
+                            st.markdown(result['chunk'][:500] + "..." if len(result['chunk']) > 500 else result['chunk'])
+                else:
+                    st.warning("No relevant results found. Try different keywords.")
+    
+    def render_content_tab(self):
+        """Render the raw content tab"""
+        content = st.session_state.crawled_content
+        if not content:
+            st.info("No content available.")
+            return
+        
+        st.markdown(f"#### 📄 Crawled Content ({len(content)} pages)")
+        
+        # Page selector
+        page_titles = [f"{i+1}. {page.get('title', 'Untitled')[:50]}..." for i, page in enumerate(content)]
+        selected_page_idx = st.selectbox("Select page to view:", range(len(content)), format_func=lambda x: page_titles[x])
+        
+        if selected_page_idx is not None:
+            page = content[selected_page_idx]
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.markdown(f"**Title:** {page.get('title', 'Untitled')}")
+                st.markdown(f"**URL:** {page.get('url', 'N/A')}")
+                
+            with col2:
+                st.markdown(f"**Word Count:** {len(page.get('content', '').split())}")
+                st.markdown(f"**Content Length:** {len(page.get('content', ''))} chars")
+            
+            st.divider()
+            
+            # Content display
+            content_text = page.get('content', 'No content available')
+            if len(content_text) > 5000:
+                st.markdown("**Content Preview (first 5000 characters):**")
+                st.text_area("", content_text[:5000] + "...", height=300, disabled=True)
+                
+                if st.button("Show Full Content", key=f"full_content_{selected_page_idx}"):
+                    st.markdown("**Full Content:**")
+                    st.text_area("", content_text, height=500, disabled=True)
+            else:
+                st.markdown("**Full Content:**")
+                st.text_area("", content_text, height=300, disabled=True)
 
     def run(self):
         """Run the main application"""
