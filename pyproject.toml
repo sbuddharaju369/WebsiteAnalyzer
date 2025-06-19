@@ -27,4 +27,5 @@ dependencies = [
     "plotly>=6.1.2",
     "chromadb>=1.0.12",
     "pandas>=2.3.0",
+    "numpy>=1.25.0",
 ]

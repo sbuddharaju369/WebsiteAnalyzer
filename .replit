@@ -2,7 +2,7 @@ modules = ["python-3.11"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["bash", "cargo", "file", "geckodriver", "glibcLocales", "libiconv", "rustc", "xcodebuild", "zlib"]
+packages = ["bash", "cargo", "file", "gcc-unwrapped", "geckodriver", "glibcLocales", "libiconv", "rustc", "xcodebuild", "zlib"]
 
 [deployment]
 deploymentTarget = "autoscale"

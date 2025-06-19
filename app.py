@@ -120,10 +120,12 @@ class SimpleWebCrawler:
 
 
 class SimpleRAGEngine:
-    """Simplified RAG engine without ChromaDB dependencies"""
+    """RAG engine with intelligent chunking and semantic search"""
     
     def __init__(self):
         self.content = []
+        self.chunks = []
+        self.chunk_metadata = []
         self.encoding = tiktoken.get_encoding("cl100k_base")
         
         # Check OpenAI API key
@@ -133,49 +135,218 @@ class SimpleRAGEngine:
             
         openai.api_key = self.api_key
     
+    def _smart_chunk_text(self, text: str, max_tokens: int = 1000, overlap_tokens: int = 100) -> List[str]:
+        """Intelligently chunk text based on semantic boundaries"""
+        # Split by paragraphs first
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        
+        chunks = []
+        current_chunk = ""
+        
+        for paragraph in paragraphs:
+            paragraph_tokens = len(self.encoding.encode(paragraph))
+            current_tokens = len(self.encoding.encode(current_chunk))
+            
+            # If paragraph is too large, split it by sentences
+            if paragraph_tokens > max_tokens:
+                sentences = [s.strip() + '.' for s in paragraph.split('.') if s.strip()]
+                
+                for sentence in sentences:
+                    sentence_tokens = len(self.encoding.encode(sentence))
+                    
+                    if current_tokens + sentence_tokens <= max_tokens:
+                        current_chunk += " " + sentence if current_chunk else sentence
+                        current_tokens = len(self.encoding.encode(current_chunk))
+                    else:
+                        if current_chunk:
+                            chunks.append(current_chunk.strip())
+                        current_chunk = sentence
+                        current_tokens = sentence_tokens
+            else:
+                # Check if we can add this paragraph to current chunk
+                if current_tokens + paragraph_tokens <= max_tokens:
+                    current_chunk += "\n\n" + paragraph if current_chunk else paragraph
+                else:
+                    # Save current chunk and start new one
+                    if current_chunk:
+                        chunks.append(current_chunk.strip())
+                    current_chunk = paragraph
+        
+        # Add the last chunk
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        # Add overlap between chunks
+        if len(chunks) > 1 and overlap_tokens > 0:
+            overlapped_chunks = []
+            
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    overlapped_chunks.append(chunk)
+                else:
+                    # Get overlap from previous chunk
+                    prev_chunk = chunks[i-1]
+                    words = prev_chunk.split()
+                    overlap_text = ""
+                    
+                    # Build overlap from the end
+                    for word in reversed(words):
+                        test_text = word + " " + overlap_text if overlap_text else word
+                        if len(self.encoding.encode(test_text)) <= overlap_tokens:
+                            overlap_text = test_text
+                        else:
+                            break
+                    
+                    if overlap_text:
+                        overlapped_chunk = overlap_text.strip() + "\n\n" + chunk
+                        overlapped_chunks.append(overlapped_chunk)
+                    else:
+                        overlapped_chunks.append(chunk)
+            
+            return overlapped_chunks
+        
+        return chunks
+
     def process_web_content(self, web_content: List[Dict[str, Any]], domain: str = None):
-        """Process and store web content"""
+        """Process and store web content with intelligent chunking"""
         self.content = web_content
-        st.success(f"Processed {len(web_content)} pages for analysis")
+        self.chunks = []
+        self.chunk_metadata = []
+        
+        chunk_id = 0
+        
+        # Process each page with smart chunking
+        for page in web_content:
+            content = page.get('content', '')
+            if not content.strip():
+                continue
+            
+            # Use cached chunks if available
+            if 'chunks' in page and page['chunks']:
+                page_chunks = page['chunks']
+            else:
+                page_chunks = self._smart_chunk_text(content, max_tokens=1000, overlap_tokens=100)
+                # Cache chunks for future use
+                page['chunks'] = page_chunks
+            
+            # Store chunks with metadata
+            for chunk in page_chunks:
+                self.chunks.append(chunk)
+                self.chunk_metadata.append({
+                    'url': page.get('url', ''),
+                    'title': page.get('title', ''),
+                    'domain': domain or page.get('domain', ''),
+                    'word_count': len(chunk.split()),
+                    'chunk_id': chunk_id,
+                    'page_index': len(self.chunks) - 1
+                })
+                chunk_id += 1
+        
+        st.success(f"Processed {len(web_content)} pages into {len(self.chunks)} intelligent chunks for analysis")
     
+    def _semantic_search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+        """Perform semantic search across chunks"""
+        if not self.chunks:
+            return []
+        
+        # Simple keyword-based relevance scoring
+        query_words = set(query.lower().split())
+        scored_chunks = []
+        
+        for i, chunk in enumerate(self.chunks):
+            chunk_words = set(chunk.lower().split())
+            # Calculate relevance score based on word overlap
+            overlap = len(query_words.intersection(chunk_words))
+            total_words = len(query_words.union(chunk_words))
+            relevance = overlap / total_words if total_words > 0 else 0
+            
+            # Boost score if query terms appear close together
+            if overlap > 0:
+                chunk_lower = chunk.lower()
+                for word in query_words:
+                    if word in chunk_lower:
+                        relevance += 0.1
+            
+            if relevance > 0:
+                scored_chunks.append({
+                    'chunk': chunk,
+                    'metadata': self.chunk_metadata[i],
+                    'relevance': relevance
+                })
+        
+        # Sort by relevance and return top k
+        scored_chunks.sort(key=lambda x: x['relevance'], reverse=True)
+        return scored_chunks[:k]
+
     def analyze_content(self, question: str, verbosity: str = 'concise'):
-        """Analyze content and provide answers"""
-        if not self.content:
+        """Analyze content with semantic search and provide answers"""
+        if not self.chunks:
             return {"answer": "No content available for analysis"}
         
-        # Combine content for context
-        context_parts = []
-        for page in self.content[:5]:  # Use top 5 pages
-            context_parts.append(f"Title: {page['title']}\nContent: {page['content'][:1000]}...")
+        # Find most relevant chunks using semantic search
+        relevant_chunks = self._semantic_search(question, k=5)
         
-        context = "\n\n".join(context_parts)
+        if not relevant_chunks:
+            # Fallback to first few chunks if no relevant ones found
+            context_parts = []
+            for i, chunk in enumerate(self.chunks[:3]):
+                metadata = self.chunk_metadata[i]
+                context_parts.append(f"Source: {metadata['title']}\nContent: {chunk[:800]}...")
+        else:
+            context_parts = []
+            sources = []
+            for item in relevant_chunks:
+                chunk = item['chunk']
+                metadata = item['metadata']
+                context_parts.append(f"Source: {metadata['title']}\nContent: {chunk}")
+                sources.append({
+                    'title': metadata['title'],
+                    'url': metadata['url'],
+                    'relevance': f"{item['relevance']:.2f}"
+                })
+        
+        context = "\n\n---\n\n".join(context_parts)
         
         # Create prompt based on verbosity
+        system_prompt = "You are a helpful assistant that analyzes website content and provides accurate, well-sourced answers based solely on the provided information. Always cite which sources you're drawing from."
+        
         if verbosity == 'concise':
-            prompt = f"Based on this website content, provide a brief answer to: {question}\n\nContent:\n{context}"
+            user_prompt = f"Based on this website content, provide a brief, focused answer to: {question}\n\nContent:\n{context}"
+            max_tokens = 400
         elif verbosity == 'comprehensive':
-            prompt = f"Based on this website content, provide a detailed analysis for: {question}\n\nContent:\n{context}"
+            user_prompt = f"Based on this website content, provide a detailed, thorough analysis for: {question}. Include specific examples and details from the sources.\n\nContent:\n{context}"
+            max_tokens = 1200
         else:  # balanced
-            prompt = f"Based on this website content, provide a balanced answer to: {question}\n\nContent:\n{context}"
+            user_prompt = f"Based on this website content, provide a balanced, informative answer to: {question}\n\nContent:\n{context}"
+            max_tokens = 800
         
         try:
             response = openai.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that analyzes website content and provides accurate answers based solely on the provided information."},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=500 if verbosity == 'concise' else 1000,
+                max_tokens=max_tokens,
                 temperature=0.3
             )
             
+            # Calculate confidence based on relevance of sources
+            if relevant_chunks:
+                avg_relevance = sum(item['relevance'] for item in relevant_chunks) / len(relevant_chunks)
+                confidence = min(avg_relevance * 2, 1.0)  # Scale to 0-1
+            else:
+                confidence = 0.5  # Medium confidence for fallback
+            
             return {
                 "answer": response.choices[0].message.content,
-                "sources": [{"title": page["title"], "url": page["url"]} for page in self.content[:3]]
+                "sources": sources if relevant_chunks else [{"title": meta["title"], "url": meta["url"]} for meta in self.chunk_metadata[:3]],
+                "confidence": confidence,
+                "chunks_used": len(relevant_chunks) if relevant_chunks else 3
             }
             
         except Exception as e:
-            return {"answer": f"Error analyzing content: {str(e)}"}
+            return {"answer": f"Error analyzing content: {str(e)}", "sources": [], "confidence": 0.0}
     
     def suggest_questions(self):
         """Suggest relevant questions"""
@@ -190,8 +361,9 @@ class SimpleRAGEngine:
     def get_content_summary(self):
         """Get content summary"""
         return {
-            "total_chunks": len(self.content),
-            "total_pages": len(self.content)
+            "total_chunks": len(self.chunks),
+            "total_pages": len(self.content),
+            "avg_chunk_size": sum(len(chunk.split()) for chunk in self.chunks) / len(self.chunks) if self.chunks else 0
         }
 
 
@@ -578,10 +750,37 @@ class WebContentAnalyzer:
                 st.markdown(f"### Answer ({verbosity_indicators[verbosity]})")
                 st.markdown(result['answer'])
                 
-                if 'sources' in result and result['sources']:
-                    with st.expander("📚 Sources"):
-                        for source in result['sources']:
-                            st.markdown(f"- **{source['title']}** - {source['url']}")
+                # Display confidence and sources
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    if 'sources' in result and result['sources']:
+                        with st.expander("📚 Sources"):
+                            for source in result['sources']:
+                                relevance_text = f" (Relevance: {source.get('relevance', 'N/A')})" if 'relevance' in source else ""
+                                st.markdown(f"- **{source['title']}**{relevance_text}")
+                                st.markdown(f"  {source['url']}")
+                
+                with col2:
+                    if 'confidence' in result:
+                        confidence = result['confidence']
+                        if confidence >= 0.8:
+                            confidence_text = "Very Reliable"
+                            confidence_color = "green"
+                        elif confidence >= 0.6:
+                            confidence_text = "Mostly Reliable"  
+                            confidence_color = "orange"
+                        elif confidence >= 0.4:
+                            confidence_text = "Moderately Reliable"
+                            confidence_color = "orange"
+                        else:
+                            confidence_text = "Limited Reliability"
+                            confidence_color = "red"
+                        
+                        st.markdown(f"**Confidence:** :{confidence_color}[{confidence_text}]")
+                        
+                        if 'chunks_used' in result:
+                            st.markdown(f"**Chunks analyzed:** {result['chunks_used']}")
     
     def run(self):
         """Run the application"""
