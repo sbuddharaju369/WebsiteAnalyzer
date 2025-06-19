@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional
 
 # Import standalone modules
 from web_crawler import WebCrawler
-from web_rag_engine import WebRAGEngine
+from simple_rag_engine import SimpleRAGEngine
 
 # Configuration constants
 DEFAULT_VERBOSITY = 'concise'
