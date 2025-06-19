@@ -8,7 +8,6 @@ dependencies = [
     "chromadb>=1.0.12",
     "faiss-cpu>=1.11.0",
     "langchain>=0.3.25",
-    "numpy>=2.3.0",
     "openai>=1.86.0",
     "psycopg2-binary>=2.9.10",
     "requests>=2.32.4",
@@ -27,5 +26,6 @@ dependencies = [
     "readability-lxml>=0.8.4.1",
     "langchain-community>=0.3.25",
     "plotly>=6.1.2",
+    "numpy>=2.3.0",
     "pandas>=2.3.0",
 ]
