@@ -1249,18 +1249,20 @@ Generate only the title, no explanations or quotes."""
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("**Your question:**")
-            # Use key to properly handle value updates
+            # Handle suggested question population
+            initial_value = ""
+            if 'current_question' in st.session_state and st.session_state.current_question:
+                initial_value = st.session_state.current_question
+                st.session_state.current_question = ""
+            
             question = st.text_area(
                 "Your question:",
-                value=st.session_state.get('current_question', ''),
+                value=initial_value,
                 placeholder="Ask anything about the website content...",
                 height=80,
                 label_visibility="collapsed",
                 key="question_input"
             )
-            # Clear current_question after it's been used
-            if 'current_question' in st.session_state:
-                st.session_state.current_question = ""
         with col2:
             st.markdown("**Answer Style:**")
             verbosity = st.selectbox(
@@ -1363,23 +1365,23 @@ Generate only the title, no explanations or quotes."""
                             
                             st.markdown(f"{confidence_indicator} **{i}.** [{source['title']}]({source['url']}) *(Relevance: {source_confidence:.0%})*")
                     
-                    # Reliability improvement tips
-                    if confidence < 0.7:
-                        with st.expander("💡 How to improve answer reliability"):
-                            st.markdown("""
-                            **To get more reliable answers:**
-                            
-                            1. **Be more specific**: Instead of "What services?" ask "What wireless plans are available?"
-                            2. **Ask targeted questions**: Focus on specific topics covered on the website
-                            3. **Try different phrasings**: Rephrase your question using different keywords
-                            4. **Check if more content is needed**: Consider crawling more pages if the website is large
-                            5. **Use exact terms**: Use terminology that appears on the website
-                            
-                            **Current issue may be:**
-                            - Limited relevant content found for your specific question
-                            - Question too broad or general for available content
-                            - Key information may be on pages not yet crawled
-                            """)
+                    # Reliability improvement tips - always show
+                    with st.expander("💡 How to improve answer reliability"):
+                        st.markdown("""
+                        **To get more reliable answers:**
+                        
+                        1. **Be more specific**: Instead of "What services?" ask "What wireless plans are available?"
+                        2. **Ask targeted questions**: Focus on specific topics covered on the website
+                        3. **Try different phrasings**: Rephrase your question using different keywords
+                        4. **Check if more content is needed**: Consider crawling more pages if the website is large
+                        5. **Use exact terms**: Use terminology that appears on the website
+                        
+                        **Common issues:**
+                        - Limited relevant content found for your specific question
+                        - Question too broad or general for available content
+                        - Key information may be on pages not yet crawled
+                        - Try asking about topics that appear frequently in the crawled content
+                        """)
                 else:
                     st.error("Could not generate an answer. Please try rephrasing your question.")
                     
