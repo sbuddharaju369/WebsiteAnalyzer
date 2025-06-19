@@ -1,20 +1,23 @@
 """
-Web Content Analyzer - Streamlined Version
+Web Content Analyzer - Temporary Version Without Pandas
 A comprehensive Streamlit application for crawling and analyzing web content using AI-powered RAG
 """
 import streamlit as st
 import os
 import json
-import time
 from datetime import datetime
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-import requests
-from bs4 import BeautifulSoup
-import trafilatura
-import tiktoken
-import openai
+
+# Import standalone modules
+from web_crawler import WebCrawler
+from web_rag_engine import WebRAGEngine
+
+# Configuration constants
+DEFAULT_VERBOSITY = 'concise'
+DEFAULT_MAX_PAGES = 50
+DEFAULT_DELAY = 1.0
 
 # Configure Streamlit page
 st.set_page_config(
@@ -24,190 +27,21 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Configuration constants
-DEFAULT_VERBOSITY = 'concise'
-DEFAULT_MAX_PAGES = 50
-DEFAULT_DELAY = 1.0
-
-
-class SimpleWebCrawler:
-    """Simplified web crawler without external dependencies"""
-    
-    def __init__(self, max_pages: int = 50, delay: float = 1.0):
-        self.max_pages = max_pages
-        self.delay = delay
-        self.crawled_content = []
-        
-    def crawl_website(self, start_url: str, progress_callback=None):
-        """Crawl website and extract content"""
-        visited_urls = set()
-        to_visit = [start_url]
-        base_domain = urlparse(start_url).netloc
-        
-        pages_visited = 0
-        pages_extracted = 0
-        
-        while to_visit and pages_visited < self.max_pages:
-            url = to_visit.pop(0)
-            
-            if url in visited_urls:
-                continue
-                
-            visited_urls.add(url)
-            pages_visited += 1
-            
-            try:
-                response = requests.get(url, timeout=10)
-                response.raise_for_status()
-                
-                # Extract content using trafilatura
-                text_content = trafilatura.extract(response.text)
-                
-                if text_content and len(text_content.strip()) > 100:
-                    # Extract title
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    title = soup.title.string if soup.title else url
-                    
-                    page_data = {
-                        'url': url,
-                        'title': title.strip(),
-                        'content': text_content,
-                        'word_count': len(text_content.split()),
-                        'timestamp': datetime.now().isoformat()
-                    }
-                    
-                    self.crawled_content.append(page_data)
-                    pages_extracted += 1
-                    
-                    # Find more links
-                    links = soup.find_all('a', href=True)
-                    for link in links[:5]:  # Limit links per page
-                        href = link['href']
-                        if href.startswith('/'):
-                            full_url = f"https://{base_domain}{href}"
-                        elif href.startswith('http') and base_domain in href:
-                            full_url = href
-                        else:
-                            continue
-                            
-                        if full_url not in visited_urls and full_url not in to_visit:
-                            to_visit.append(full_url)
-                
-                if progress_callback:
-                    progress_callback(pages_visited, pages_extracted, url, title)
-                
-                time.sleep(self.delay)
-                
-            except Exception as e:
-                st.warning(f"Error crawling {url}: {str(e)}")
-                continue
-        
-        return self.crawled_content
-    
-    def get_crawl_stats(self):
-        """Get statistics about crawled content"""
-        if not self.crawled_content:
-            return {}
-            
-        total_words = sum(page.get('word_count', 0) for page in self.crawled_content)
-        avg_words = total_words / len(self.crawled_content) if self.crawled_content else 0
-        
-        return {
-            'total_pages': len(self.crawled_content),
-            'total_words': total_words,
-            'average_words_per_page': avg_words
-        }
-
-
-class SimpleRAGEngine:
-    """Simplified RAG engine without ChromaDB dependencies"""
-    
-    def __init__(self):
-        self.content = []
-        self.encoding = tiktoken.get_encoding("cl100k_base")
-        
-        # Check OpenAI API key
-        self.api_key = os.getenv('OPENAI_API_KEY')
-        if not self.api_key:
-            raise ValueError("OpenAI API key not found")
-            
-        openai.api_key = self.api_key
-    
-    def process_web_content(self, web_content: List[Dict[str, Any]], domain: str = None):
-        """Process and store web content"""
-        self.content = web_content
-        st.success(f"Processed {len(web_content)} pages for analysis")
-    
-    def analyze_content(self, question: str, verbosity: str = 'concise'):
-        """Analyze content and provide answers"""
-        if not self.content:
-            return {"answer": "No content available for analysis"}
-        
-        # Combine content for context
-        context_parts = []
-        for page in self.content[:5]:  # Use top 5 pages
-            context_parts.append(f"Title: {page['title']}\nContent: {page['content'][:1000]}...")
-        
-        context = "\n\n".join(context_parts)
-        
-        # Create prompt based on verbosity
-        if verbosity == 'concise':
-            prompt = f"Based on this website content, provide a brief answer to: {question}\n\nContent:\n{context}"
-        elif verbosity == 'comprehensive':
-            prompt = f"Based on this website content, provide a detailed analysis for: {question}\n\nContent:\n{context}"
-        else:  # balanced
-            prompt = f"Based on this website content, provide a balanced answer to: {question}\n\nContent:\n{context}"
-        
-        try:
-            response = openai.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that analyzes website content and provides accurate answers based solely on the provided information."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=500 if verbosity == 'concise' else 1000,
-                temperature=0.3
-            )
-            
-            return {
-                "answer": response.choices[0].message.content,
-                "sources": [{"title": page["title"], "url": page["url"]} for page in self.content[:3]]
-            }
-            
-        except Exception as e:
-            return {"answer": f"Error analyzing content: {str(e)}"}
-    
-    def suggest_questions(self):
-        """Suggest relevant questions"""
-        return [
-            "What is this website about?",
-            "What products or services are offered?",
-            "How can I contact them?",
-            "What are the main topics covered?",
-            "What are the key features mentioned?"
-        ]
-    
-    def get_content_summary(self):
-        """Get content summary"""
-        return {
-            "total_chunks": len(self.content),
-            "total_pages": len(self.content)
-        }
-
 
 class WebContentAnalyzer:
-    """Main application class"""
+    """Main application class for the Web Content Analyzer"""
     
     def __init__(self):
         self.initialize_session_state()
-    
+
     def initialize_session_state(self):
-        """Initialize session state"""
+        """Initialize session state variables"""
         defaults = {
             'crawler': None,
             'rag_engine': None,
             'crawled_content': [],
             'crawl_stats': {},
+            'analysis_results': {},
             'current_domain': None,
             'crawl_in_progress': False,
             'answer_verbosity': DEFAULT_VERBOSITY,
@@ -217,16 +51,17 @@ class WebContentAnalyzer:
         for key, default in defaults.items():
             if key not in st.session_state:
                 st.session_state[key] = default
-    
+
     def check_openai_key(self) -> bool:
         """Check if OpenAI API key is available"""
         return bool(os.getenv('OPENAI_API_KEY'))
-    
+
     def render_sidebar(self):
-        """Render sidebar interface"""
+        """Render the collapsible sidebar interface"""
         with st.sidebar:
             st.markdown("### Navigation")
             
+            # Navigation buttons for drawers
             col1, col2, col3 = st.columns(3)
             
             with col1:
@@ -249,9 +84,9 @@ class WebContentAnalyzer:
                 self.render_cache_drawer()
             elif st.session_state.active_drawer == 'overview':
                 self.render_overview_drawer()
-    
+
     def render_crawler_drawer(self):
-        """Render web crawler interface"""
+        """Render the web crawler interface"""
         st.markdown("#### 🕷️ Web Crawler")
         
         url_input = st.text_input(
@@ -263,15 +98,16 @@ class WebContentAnalyzer:
         with st.expander("⚙️ Crawling Settings"):
             max_pages = st.slider("Maximum pages to crawl", 1, 100, DEFAULT_MAX_PAGES)
             delay = st.slider("Delay between requests (seconds)", 0.5, 5.0, DEFAULT_DELAY, 0.5)
+            st.info("Higher delays are more respectful to websites but take longer")
         
         if st.button("🔍 Start Crawling", disabled=st.session_state.crawl_in_progress):
             if url_input:
                 self.start_crawling(url_input, max_pages, delay)
             else:
                 st.warning("Please enter a valid URL")
-    
+
     def render_cache_drawer(self):
-        """Render cache management interface"""
+        """Render the cache management interface"""
         st.markdown("#### 💾 Cache Management")
         
         cache_files = self.get_cache_files()
@@ -287,9 +123,9 @@ class WebContentAnalyzer:
                 self.load_cached_content(selected_cache)
         else:
             st.info("No cache files found")
-    
+
     def render_overview_drawer(self):
-        """Render content overview interface"""
+        """Render the content overview interface"""
         if st.session_state.crawled_content:
             st.markdown("#### 📊 Content Overview")
             
@@ -298,27 +134,32 @@ class WebContentAnalyzer:
                 st.metric("Total Pages", stats.get('total_pages', 0))
                 st.metric("Total Words", f"{stats.get('total_words', 0):,}")
                 st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
+                
+                if st.session_state.rag_engine:
+                    summary = st.session_state.rag_engine.get_content_summary()
+                    st.markdown("**Content Chunks:** " + str(summary.get('total_chunks', 0)))
         else:
             st.info("No content loaded yet")
-    
+
     def start_crawling(self, url: str, max_pages: int, delay: float):
-        """Start crawling process"""
+        """Start the crawling process"""
         st.session_state.crawl_in_progress = True
         domain = urlparse(url).netloc
         st.session_state.current_domain = domain
         
         with st.sidebar:
             st.markdown("---")
-            st.markdown("### 🕷️ Crawling Progress")
+            st.markdown(f"### 🕷️ Crawling Progress")
             
             pages_visited_placeholder = st.empty()
             pages_extracted_placeholder = st.empty()
             progress_bar_placeholder = st.empty()
             current_page_placeholder = st.empty()
+            eta_placeholder = st.empty()
             
             start_time = datetime.now()
         
-        crawler = SimpleWebCrawler(max_pages=max_pages, delay=delay)
+        crawler = WebCrawler(max_pages=max_pages, delay=delay)
         
         def progress_callback(visited, extracted, current_url=None, page_title=None):
             pages_visited_placeholder.metric("📄 Pages Visited", visited)
@@ -330,6 +171,22 @@ class WebContentAnalyzer:
             if current_url and page_title:
                 title_display = page_title[:40] + "..." if len(page_title) > 40 else page_title
                 current_page_placeholder.info(f"🔍 **Current:** {title_display}")
+            
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if visited > 0 and elapsed > 0:
+                rate = visited / (elapsed / 60)
+                remaining = max_pages - visited
+                eta_minutes = remaining / rate if rate > 0 else 0
+                
+                if eta_minutes < 1:
+                    eta_display = "< 1 min"
+                elif eta_minutes < 60:
+                    eta_display = f"{eta_minutes:.0f} min"
+                else:
+                    hours = eta_minutes / 60
+                    eta_display = f"{hours:.1f} hrs"
+                
+                eta_placeholder.info(f"⏱️ **ETA:** {eta_display}")
         
         content = crawler.crawl_website(url, progress_callback=progress_callback)
         
@@ -345,46 +202,78 @@ class WebContentAnalyzer:
             stats = crawler.get_crawl_stats()
             st.session_state.crawl_stats = stats
             
-            # Initialize RAG engine
-            try:
-                rag_engine = SimpleRAGEngine()
-                rag_engine.process_web_content(content, domain)
+            # AI Analysis
+            with st.spinner("Processing content for AI analysis..."):
+                rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
+                rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
                 st.session_state.rag_engine = rag_engine
-            except Exception as e:
-                st.error(f"Error initializing AI analysis: {str(e)}")
-                st.session_state.rag_engine = None
             
-            # Save to cache
-            cache_file = self.save_cache(content, domain)
-            st.info(f"Cache saved: {cache_file}")
+            with st.spinner("Saving to cache..."):
+                cache_file = self.save_cache(content, domain)
+                st.info(f"Cache saved: {cache_file}")
             
             st.success(f"Successfully analyzed {len(content)} pages!")
         else:
             st.error("Failed to crawl website. Please check the URL and try again.")
         
         st.session_state.crawl_in_progress = False
-    
+
     def get_cache_files(self) -> List[str]:
-        """Get list of cache files"""
+        """Get list of available cache files"""
         cache_dir = Path("data/cache")
         if not cache_dir.exists():
             return []
         
-        return sorted([f.name for f in cache_dir.glob("*.json")], reverse=True)
+        cache_files = []
+        for file in cache_dir.glob("*.json"):
+            cache_files.append(file.name)
+        
+        return sorted(cache_files, reverse=True)
     
     def format_cache_name(self, filename: str) -> str:
         """Format cache filename for display"""
         if not filename:
             return ""
-        return filename.replace('.json', '').replace('_', ' - ')
+        
+        # Remove .json extension
+        name = filename.replace('.json', '')
+        
+        # Try to parse the filename format: domain_date_time_pages
+        parts = name.split('_')
+        if len(parts) >= 4:
+            domain = parts[0]
+            date_str = parts[1]
+            time_str = parts[2]
+            pages_str = parts[3]
+            
+            try:
+                # Convert date format
+                date_obj = datetime.strptime(date_str, "%b-%d-%Y")
+                formatted_date = date_obj.strftime("%B %d, %Y")
+                
+                # Convert time format
+                time_obj = datetime.strptime(time_str, "%I-%Mpm")
+                formatted_time = time_obj.strftime("%I:%M %p")
+                
+                # Extract page count
+                pages = pages_str.replace('pages', '')
+                
+                return f"{domain} - {formatted_date} at {formatted_time} ({pages} pages)"
+            except:
+                pass
+        
+        return filename
     
     def save_cache(self, content: List[Dict[str, Any]], domain: str) -> str:
-        """Save content to cache"""
+        """Save content to cache file"""
         cache_dir = Path("data/cache")
         cache_dir.mkdir(parents=True, exist_ok=True)
         
         timestamp = datetime.now()
-        filename = f"{domain}_{timestamp.strftime('%Y%m%d_%H%M%S')}_{len(content)}pages.json"
+        date_str = timestamp.strftime("%b-%d-%Y")
+        time_str = timestamp.strftime("%-I-%Mpm")
+        
+        filename = f"{domain}_{date_str}_{time_str}_{len(content)}pages.json"
         filepath = cache_dir / filename
         
         cache_data = {
@@ -398,50 +287,48 @@ class WebContentAnalyzer:
             json.dump(cache_data, f, indent=2, ensure_ascii=False)
         
         return filename
-    
+
     def load_cached_content(self, filename: str):
-        """Load content from cache"""
-        try:
-            cache_file = Path("data/cache") / filename
-            
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
-            
-            if cache_data and cache_data.get('content'):
-                content = cache_data['content']
-                st.session_state.crawled_content = content
-                domain = cache_data.get('domain', 'unknown')
-                st.session_state.current_domain = domain
+        """Load content from cache file"""
+        with st.spinner("Loading cached content..."):
+            try:
+                cache_file = Path("data/cache") / filename
                 
-                # Update stats
-                if content:
-                    total_words = sum(page.get('word_count', 0) for page in content)
-                    avg_words = total_words / len(content) if content else 0
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+                
+                if cache_data and cache_data.get('content'):
+                    content = cache_data['content']
+                    st.session_state.crawled_content = content
+                    domain = cache_data.get('domain', urlparse(content[0]['url']).netloc)
+                    st.session_state.current_domain = domain
                     
-                    stats = {
-                        'total_pages': len(content),
-                        'total_words': total_words,
-                        'average_words_per_page': avg_words
-                    }
-                    st.session_state.crawl_stats = stats
-                
-                # Initialize RAG engine
-                try:
-                    rag_engine = SimpleRAGEngine()
-                    rag_engine.process_web_content(content, domain)
+                    if content:
+                        total_words = sum(page.get('word_count', 0) for page in content)
+                        avg_words = total_words / len(content) if content else 0
+                        
+                        stats = {
+                            'total_pages': len(content),
+                            'total_words': total_words,
+                            'average_words_per_page': avg_words,
+                            'domain': domain,
+                            'source': 'cache'
+                        }
+                        
+                        st.session_state.crawl_stats = stats
+                    
+                    rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
+                    rag_engine.process_web_content(content, domain, use_cached_embeddings=True)
                     st.session_state.rag_engine = rag_engine
-                except Exception as e:
-                    st.error(f"Error initializing AI analysis: {str(e)}")
-                    st.session_state.rag_engine = None
-                
-                st.success(f"Loaded {len(content)} pages from cache!")
-            else:
-                st.error("Cache file is empty or corrupted")
-        except Exception as e:
-            st.error(f"Error loading cache: {str(e)}")
-    
+                    
+                    st.success(f"Loaded {len(content)} pages from cache!")
+                else:
+                    st.error("Cache file is empty or corrupted")
+            except Exception as e:
+                st.error(f"Error loading cache: {str(e)}")
+
     def render_main_content(self):
-        """Render main content area"""
+        """Render the main content area"""
         st.markdown("""
         <div style="
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -475,19 +362,19 @@ class WebContentAnalyzer:
             self.render_welcome_screen()
         else:
             self.render_analysis_interface()
-    
+
     def render_welcome_screen(self):
-        """Render welcome screen"""
+        """Render the welcome screen when no content is loaded"""
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("""
             #### 🚀 Key Features
-            - **Intelligent Web Crawling**: Respects rate limits and extracts clean content
+            - **Intelligent Web Crawling**: Respects robots.txt and rate limits
             - **AI-Powered Analysis**: GPT-4 powered question answering
-            - **Content Caching**: Save and reuse crawled content
-            - **Real-time Progress**: Track crawling progress with live updates
-            - **Configurable Responses**: Choose answer detail level
+            - **Semantic Search**: Find relevant content using natural language
+            - **Visual Analytics**: Interactive charts and network graphs
+            - **Embedding Cache**: Reuse AI processing for faster analysis
             """)
         
         with col2:
@@ -497,14 +384,13 @@ class WebContentAnalyzer:
             - "What are the main topics covered?"
             - "How can I contact them?"
             - "What are their pricing options?"
-            - "What services are available?"
             """)
         
         st.markdown("---")
         st.info("👆 Enter a website URL in the sidebar to get started!")
-    
+
     def render_analysis_interface(self):
-        """Render analysis interface"""
+        """Render the main analysis interface"""
         st.markdown(f"""
         <div style="
             background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
@@ -530,7 +416,7 @@ class WebContentAnalyzer:
             suggested_questions = st.session_state.rag_engine.suggest_questions()
             
             with st.expander("💡 Suggested Questions"):
-                for question in suggested_questions:
+                for question in suggested_questions[:6]:
                     if st.button(f"❓ {question}", key=f"suggested_{hash(question)}"):
                         st.session_state.current_question = question
         
@@ -577,14 +463,9 @@ class WebContentAnalyzer:
                 
                 st.markdown(f"### Answer ({verbosity_indicators[verbosity]})")
                 st.markdown(result['answer'])
-                
-                if 'sources' in result and result['sources']:
-                    with st.expander("📚 Sources"):
-                        for source in result['sources']:
-                            st.markdown(f"- **{source['title']}** - {source['url']}")
-    
+
     def run(self):
-        """Run the application"""
+        """Run the main application"""
         if not self.check_openai_key():
             st.error("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
             st.stop()
@@ -594,7 +475,7 @@ class WebContentAnalyzer:
 
 
 def main():
-    """Main entry point"""
+    """Main application entry point"""
     app = WebContentAnalyzer()
     app.run()
 
