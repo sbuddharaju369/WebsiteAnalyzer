@@ -63,14 +63,17 @@ class SimpleWebCrawler:
                 # Extract content using trafilatura
                 text_content = trafilatura.extract(response.text)
                 
+                # Always extract links even if content is minimal
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Extract title
+                title_element = soup.find('title')
+                title = title_element.get_text() if title_element else url
+                
                 if text_content and len(text_content.strip()) > 100:
-                    # Extract title
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    title = soup.title.string if soup.title else url
-                    
                     page_data = {
                         'url': url,
-                        'title': title.strip(),
+                        'title': title.strip() if title else url,
                         'content': text_content,
                         'word_count': len(text_content.split()),
                         'timestamp': datetime.now().isoformat()
@@ -78,23 +81,54 @@ class SimpleWebCrawler:
                     
                     self.crawled_content.append(page_data)
                     pages_extracted += 1
+                
+                # Always look for links regardless of content extraction success
+                links = soup.find_all('a', href=True)
+                discovered_links = []
+                
+                for link in links:
+                    href_attr = link.get('href')
+                    if not href_attr:
+                        continue
                     
-                    # Find more links
-                    links = soup.find_all('a', href=True)
-                    for link in links[:5]:  # Limit links per page
-                        href = link['href']
-                        if href.startswith('/'):
-                            full_url = f"https://{base_domain}{href}"
-                        elif href.startswith('http') and base_domain in href:
+                    # Handle href as string
+                    href = str(href_attr).strip()
+                    if not href:
+                        continue
+                        
+                    # Convert relative URLs to absolute
+                    if href.startswith('/'):
+                        full_url = f"https://{base_domain}{href}"
+                    elif href.startswith('http'):
+                        # Only include URLs from the same domain
+                        if base_domain in href:
                             full_url = href
                         else:
                             continue
-                            
-                        if full_url not in visited_urls and full_url not in to_visit:
-                            to_visit.append(full_url)
+                    else:
+                        # Skip other types of links (mailto, javascript, etc.)
+                        continue
+                    
+                    # Clean up URL fragments and parameters
+                    clean_url = full_url.split('#')[0].split('?')[0]
+                    
+                    # Skip if already visited or queued
+                    if clean_url not in visited_urls and clean_url not in to_visit and clean_url != url:
+                        discovered_links.append(clean_url)
+                
+                # Add discovered links to queue
+                to_visit.extend(discovered_links[:30])
                 
                 if progress_callback:
                     progress_callback(pages_visited, pages_extracted, url, title)
+                
+                # Show debug info in sidebar for troubleshooting
+                with st.sidebar:
+                    if discovered_links:
+                        st.write(f"✅ Found {len(discovered_links)} new links")
+                        st.write(f"📋 Queue: {len(to_visit)} URLs remaining")
+                    else:
+                        st.write("⚠️ No new links found on this page")
                 
                 time.sleep(self.delay)
                 
