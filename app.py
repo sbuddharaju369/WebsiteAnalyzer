@@ -1242,7 +1242,8 @@ Generate only the title, no explanations or quotes."""
             with st.expander("💡 Suggested Questions", expanded=st.session_state.suggested_questions_expanded):
                 for i, question in enumerate(st.session_state.suggested_questions):
                     if st.button(f"❓ {question}", key=f"suggested_{i}"):
-                        st.session_state.current_question = question
+                        # Store the question for immediate use
+                        st.session_state.selected_question = question
                         st.session_state.suggested_questions_expanded = False
                         st.rerun()
         
@@ -1250,18 +1251,17 @@ Generate only the title, no explanations or quotes."""
         with col1:
             st.markdown("**Your question:**")
             # Handle suggested question population
-            initial_value = ""
-            if 'current_question' in st.session_state and st.session_state.current_question:
-                initial_value = st.session_state.current_question
-                st.session_state.current_question = ""
+            default_value = ""
+            if 'selected_question' in st.session_state and st.session_state.selected_question:
+                default_value = st.session_state.selected_question
+                del st.session_state.selected_question
             
             question = st.text_area(
                 "Your question:",
-                value=initial_value,
+                value=default_value,
                 placeholder="Ask anything about the website content...",
                 height=80,
-                label_visibility="collapsed",
-                key="question_input"
+                label_visibility="collapsed"
             )
         with col2:
             st.markdown("**Answer Style:**")
@@ -1285,8 +1285,12 @@ Generate only the title, no explanations or quotes."""
         with submit_col1:
             submit_button = st.button("🔍 Ask", type="primary", use_container_width=True)
         
-        # Get the actual question from text area
-        actual_question = question.strip() if question else ""
+        # Check for question from either text area or selected question
+        if 'selected_question' in st.session_state and st.session_state.selected_question:
+            actual_question = st.session_state.selected_question
+            del st.session_state.selected_question
+        else:
+            actual_question = question.strip() if question else ""
         
         if submit_button and actual_question and st.session_state.rag_engine:
             try:
@@ -1366,21 +1370,19 @@ Generate only the title, no explanations or quotes."""
                             st.markdown(f"{confidence_indicator} **{i}.** [{source['title']}]({source['url']}) *(Relevance: {source_confidence:.0%})*")
                     
                     # Reliability improvement tips - always show
-                    with st.expander("💡 How to improve answer reliability"):
+                    with st.expander("💡 Tips to Improve Reliability"):
                         st.markdown("""
-                        **To get more reliable answers:**
+                        **For Better Results:**
                         
-                        1. **Be more specific**: Instead of "What services?" ask "What wireless plans are available?"
-                        2. **Ask targeted questions**: Focus on specific topics covered on the website
-                        3. **Try different phrasings**: Rephrase your question using different keywords
-                        4. **Check if more content is needed**: Consider crawling more pages if the website is large
-                        5. **Use exact terms**: Use terminology that appears on the website
+                        🎯 **Be Specific**: Ask "What are Verizon's unlimited plan prices?" instead of "What are the plans?"
                         
-                        **Common issues:**
-                        - Limited relevant content found for your specific question
-                        - Question too broad or general for available content
-                        - Key information may be on pages not yet crawled
-                        - Try asking about topics that appear frequently in the crawled content
+                        🔍 **Use Site Terms**: Look for keywords that appear on the website and use them in questions
+                        
+                        📝 **Try Variations**: Rephrase questions using different words if initial results aren't helpful
+                        
+                        📊 **Check Coverage**: If information seems incomplete, the site may need more pages crawled
+                        
+                        ⚡ **Quick Tip**: Questions about frequently mentioned topics typically get the most reliable answers
                         """)
                 else:
                     st.error("Could not generate an answer. Please try rephrasing your question.")
