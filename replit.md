@@ -132,6 +132,9 @@ The application follows a modular architecture with clear separation of concerns
 
 ## Recent Changes
 
+### Documentation Update (June 19, 2025)
+- **README Enhancement**: Added comprehensive documentation explaining the recursive web crawling process, domain scoping strategy, and content processing pipeline to help users understand how the system discovers and processes website content
+
 ### UI/UX Enhancements (June 15, 2025)
 - **Layout Optimization**: Moved Content Overview to sidebar for full-width main interface
 - **Analytics Improvements**: Content analytics charts now display side-by-side for better space utilization

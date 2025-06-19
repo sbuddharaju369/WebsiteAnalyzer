@@ -30,10 +30,51 @@ web-content-analyzer/
 ## 🚀 Features
 
 ### Web Crawling
+- **Recursive URL Discovery**: Automatically discovers and crawls all pages within a domain
 - **Intelligent Crawling**: Respects robots.txt and implements rate limiting
 - **Content Extraction**: Uses trafilatura for clean text extraction
 - **Domain Scoping**: Stays within target website boundaries
 - **Progress Tracking**: Real-time crawling progress with metrics
+
+## How Recursive Web Crawling Works
+
+### URL Discovery Process
+The Web Content Analyzer performs intelligent recursive crawling starting from any URL you provide:
+
+1. **Starting Point**: Begin crawling from your provided URL (e.g., `https://example.com/page1`)
+2. **Link Extraction**: Extract all links from each visited page using Beautiful Soup
+3. **Domain Scoping**: Only follow links within the same domain to prevent external crawling
+4. **Recursive Discovery**: Continue discovering new pages through internal links automatically
+5. **Depth Control**: Configurable maximum page limits (1-100 pages) and request delays (0.5-5 seconds)
+
+### Crawling Strategy
+- **Respectful Crawling**: Implements rate limiting with configurable delays between requests
+- **Content Filtering**: Focuses on text content, skipping non-content files (images, PDFs, etc.)
+- **Real-time Progress**: Live tracking shows pages visited vs content successfully extracted
+- **Error Handling**: Gracefully handles failed requests and continues crawling other pages
+- **Queue Management**: Maintains a queue of discovered URLs for systematic processing
+
+### Domain Boundaries & Security
+- **Same-Domain Only**: If you provide `https://company.com/about`, it will only crawl `company.com` pages
+- **Subdomain Handling**: Includes subdomains within the same root domain
+- **External Link Filtering**: Automatically excludes links to external websites
+- **Path Validation**: Ensures URLs are properly formatted and accessible
+- **Duplicate Prevention**: Avoids crawling the same page multiple times
+
+### Content Processing Pipeline
+1. **Text Extraction**: Uses Trafilatura for clean content extraction from HTML
+2. **Smart Chunking**: Breaks content into 1000-token chunks with 100-token overlap
+3. **Semantic Boundaries**: Respects paragraph and sentence boundaries for better context
+4. **Metadata Preservation**: Maintains URL, title, and source information for each chunk
+5. **Caching System**: Saves processed content with chunks for future analysis
+
+### Usage Instructions
+To start recursive crawling:
+1. Enter any website URL in the sidebar's Web Crawler section
+2. Configure your settings (max pages: 1-100, delay: 0.5-5 seconds)
+3. Click "Start Crawling" to begin automatic discovery
+4. Monitor real-time progress as pages are discovered and processed
+5. The system will automatically find and process all accessible pages within the domain
 
 ### AI-Powered Analysis
 - **RAG Engine**: Retrieval-Augmented Generation using OpenAI GPT-4
