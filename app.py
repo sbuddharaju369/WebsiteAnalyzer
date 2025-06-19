@@ -1235,25 +1235,31 @@ Generate only the title, no explanations or quotes."""
             if not st.session_state.suggested_questions:
                 st.session_state.suggested_questions = st.session_state.rag_engine.suggest_questions()
             
-            with st.expander("💡 Suggested Questions"):
+            # Use session state to control expander
+            if 'suggested_questions_expanded' not in st.session_state:
+                st.session_state.suggested_questions_expanded = True
+            
+            with st.expander("💡 Suggested Questions", expanded=st.session_state.suggested_questions_expanded):
                 for i, question in enumerate(st.session_state.suggested_questions):
                     if st.button(f"❓ {question}", key=f"suggested_{i}"):
                         st.session_state.current_question = question
+                        st.session_state.suggested_questions_expanded = False
                         st.rerun()
         
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("**Your question:**")
+            # Use key to properly handle value updates
             question = st.text_area(
                 "Your question:",
-                value=st.session_state.current_question,
+                value=st.session_state.get('current_question', ''),
                 placeholder="Ask anything about the website content...",
                 height=80,
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                key="question_input"
             )
-            # Store the question value for submit processing
-            if st.session_state.current_question:
-                question = st.session_state.current_question
+            # Clear current_question after it's been used
+            if 'current_question' in st.session_state:
                 st.session_state.current_question = ""
         with col2:
             st.markdown("**Answer Style:**")
@@ -1277,10 +1283,13 @@ Generate only the title, no explanations or quotes."""
         with submit_col1:
             submit_button = st.button("🔍 Ask", type="primary", use_container_width=True)
         
-        if submit_button and question and st.session_state.rag_engine:
+        # Get the actual question from text area
+        actual_question = question.strip() if question else ""
+        
+        if submit_button and actual_question and st.session_state.rag_engine:
             try:
                 with st.spinner("🤔 Analyzing content..."):
-                    result = st.session_state.rag_engine.analyze_content(question, verbosity=verbosity)
+                    result = st.session_state.rag_engine.analyze_content(actual_question, verbosity=verbosity)
                 
                 if result.get('answer'):
                     st.markdown("### 💬 Answer")
@@ -1330,15 +1339,20 @@ Generate only the title, no explanations or quotes."""
                     if result.get('sources'):
                         st.markdown("### 📚 Sources")
                         for i, source in enumerate(result['sources'][:5], 1):
+                            # Get confidence from source
                             source_confidence = source.get('confidence', 0)
-                            # Handle both numeric and string relevance values
+                            
+                            # Handle string relevance values from legacy format
                             if isinstance(source.get('relevance'), str):
                                 try:
                                     source_confidence = float(source['relevance'])
-                                except:
+                                except ValueError:
                                     source_confidence = 0.3
-                            elif 'relevance' in source:
+                            elif isinstance(source.get('relevance'), (int, float)):
                                 source_confidence = source['relevance']
+                            
+                            # Ensure confidence is within valid range
+                            source_confidence = max(0.0, min(1.0, source_confidence))
                             
                             if source_confidence >= 0.7:
                                 confidence_indicator = "🟢"
@@ -1372,7 +1386,7 @@ Generate only the title, no explanations or quotes."""
             except Exception as e:
                 st.error(f"Error processing question: {str(e)}")
         elif submit_button:
-            if not question:
+            if not actual_question:
                 st.info("💡 Enter a question above or click on a suggested question to get started!")
             elif not st.session_state.rag_engine:
                 st.warning("⚠️ Please crawl a website first to enable question answering.")
