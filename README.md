@@ -7,19 +7,22 @@ A comprehensive Streamlit-based web application that transforms any publicly acc
 ```
 web-content-analyzer/
 ├── app.py                          # Main Streamlit application
+├── web_crawler.py                  # Web crawling and content extraction
+├── web_rag_engine.py              # ChromaDB-based RAG engine
+├── simple_rag_engine.py           # Lightweight in-memory RAG engine
 ├── config/
 │   └── settings.py                 # Application configuration and constants
 ├── src/
-│   ├── core/                       # Core business logic
-│   │   ├── crawler.py              # Web crawling and content extraction
-│   │   └── rag_engine.py           # RAG processing and AI analysis
+│   ├── core/                       # Core business logic modules
+│   │   ├── crawler.py              # Advanced web crawling features
+│   │   └── rag_engine.py           # Enhanced RAG processing
 │   ├── ui/                         # User interface components
 │   │   └── visualizations.py      # Charts, graphs, and UI helpers
 │   └── utils/                      # Utility modules
 │       └── cache_manager.py       # Cache file management
 ├── data/                           # Data storage (auto-created)
-│   ├── cache/                      # Cached crawled content
-│   └── chroma/                     # ChromaDB vector database
+│   ├── cache/                      # Cached crawled content with embeddings
+│   └── chroma/                     # Vector database storage
 ├── .streamlit/
 │   └── config.toml                 # Streamlit configuration
 ├── pyproject.toml                  # Python dependencies
@@ -63,10 +66,10 @@ The Web Content Analyzer performs intelligent recursive crawling starting from a
 
 ### Content Processing Pipeline
 1. **Text Extraction**: Uses Trafilatura for clean content extraction from HTML
-2. **Smart Chunking**: Breaks content into 1000-token chunks with 100-token overlap
-3. **Semantic Boundaries**: Respects paragraph and sentence boundaries for better context
-4. **Metadata Preservation**: Maintains URL, title, and source information for each chunk
-5. **Caching System**: Saves processed content with chunks for future analysis
+2. **Smart Chunking**: Breaks content into 1000-token chunks with 100-token overlap using tiktoken
+3. **Semantic Boundaries**: Respects paragraph and sentence boundaries for better context preservation
+4. **Metadata Preservation**: Maintains URL, title, word count, and source information for each chunk
+5. **Caching System**: Saves processed content to JSON files with human-readable names (domain_date_time_pagecount.json)
 
 ### Usage Instructions
 To start recursive crawling:
@@ -77,10 +80,10 @@ To start recursive crawling:
 5. The system will automatically find and process all accessible pages within the domain
 
 ### AI-Powered Analysis
-- **RAG Engine**: Retrieval-Augmented Generation using OpenAI GPT-4
-- **Semantic Search**: ChromaDB vector database for similarity search
-- **Smart Chunking**: Token-aware content segmentation with overlap
-- **Embedding Caching**: Reuse AI processing for faster repeated analysis
+- **Dual RAG Implementation**: ChromaDB-based engine for advanced features, SimpleRAGEngine for lightweight deployment
+- **Semantic Search**: Keyword-based relevance scoring with similarity matching
+- **Smart Chunking**: Token-aware content segmentation with 100-token overlap for better context
+- **Content Caching**: Local JSON storage with embedded metadata for fast repeated analysis
 
 ### User Interface
 - **Collapsible Sidebar**: Organized navigation with drawer system
@@ -89,10 +92,10 @@ To start recursive crawling:
 - **Configurable Verbosity**: Concise, balanced, or comprehensive answers
 
 ### Data Management
-- **Persistent Storage**: ChromaDB for embeddings, local cache for content
-- **Cache Management**: Automatic file organization with human-readable names
-- **Coverage Analysis**: Website size estimation using sitemaps
-- **Source Attribution**: Confidence scoring and relevance tracking
+- **Flexible Storage**: ChromaDB support with fallback to in-memory storage for compatibility
+- **Cache Management**: Human-readable filenames with domain, date, time, and page count
+- **Coverage Analysis**: Website size estimation using sitemap discovery and link analysis
+- **Source Attribution**: Confidence scoring based on content relevance and similarity matching
 
 ## 🛠️ Installation & Setup
 
@@ -149,29 +152,30 @@ The application uses environment-based configuration in `config/settings.py`:
 
 ### Core Modules
 
-**WebCrawler** (`src/core/crawler.py`)
-- Handles website crawling and content extraction
-- Implements rate limiting and robots.txt compliance
-- Provides website size estimation using sitemaps
-- Manages cache file generation with embeddings
+**WebCrawler** (`web_crawler.py`)
+- Handles website crawling and content extraction using Beautiful Soup and Trafilatura
+- Implements respectful crawling with configurable delays and rate limiting
+- Provides intelligent link discovery with domain scoping
+- Manages cache file generation with human-readable naming
 
-**WebRAGEngine** (`src/core/rag_engine.py`)
-- Processes content for AI analysis using ChromaDB
-- Implements smart text chunking with token awareness
-- Provides semantic search and question answering
-- Manages embedding caching for performance optimization
+**SimpleRAGEngine** (`simple_rag_engine.py`)
+- Lightweight in-memory RAG implementation for maximum compatibility
+- Implements smart text chunking with semantic boundary awareness
+- Provides keyword-based search with relevance scoring
+- Optimized for environments with dependency constraints
 
-**CacheManager** (`src/utils/cache_manager.py`)
-- Handles cache file storage and retrieval
-- Provides human-readable file naming
-- Manages cache cleanup and organization
+**Alternative: WebRAGEngine** (`web_rag_engine.py`)
+- Advanced ChromaDB-based implementation for enhanced semantic search
+- Supports vector embeddings with persistent storage
+- Provides more sophisticated similarity matching
+- Requires additional system dependencies
 
 ### Data Flow
-1. **Crawling**: Extract content from website pages
-2. **Processing**: Chunk text and generate embeddings
-3. **Storage**: Save to ChromaDB and local cache
-4. **Analysis**: Use RAG for question answering
-5. **Visualization**: Display results and analytics
+1. **Crawling**: Extract clean content from website pages using Trafilatura
+2. **Processing**: Intelligently chunk text with 1000-token segments and 100-token overlap
+3. **Storage**: Save to local JSON cache with metadata and optional ChromaDB vector storage
+4. **Analysis**: Use RAG engine for AI-powered question answering with GPT-4o
+5. **Visualization**: Display results through interactive analytics tabs and charts
 
 ### Configuration Management
 - Centralized settings in `config/settings.py`
@@ -182,10 +186,10 @@ The application uses environment-based configuration in `config/settings.py`:
 ## 🚦 Performance Considerations
 
 ### Optimization Features
-- **Embedding Caching**: Reuse AI processing between sessions
-- **Smart Chunking**: Token-aware content segmentation
-- **Connection Pooling**: Efficient HTTP request management
-- **Progressive Loading**: Real-time progress tracking
+- **Content Caching**: Reuse processed content and metadata between sessions
+- **Smart Chunking**: Token-aware content segmentation with semantic boundary respect
+- **Efficient Search**: Keyword-based relevance scoring for fast content lookup
+- **Progressive Loading**: Real-time progress tracking with live metrics and ETAs
 
 ### Resource Management
 - **Rate Limiting**: Respectful website crawling (1-5 second delays)
@@ -196,10 +200,11 @@ The application uses environment-based configuration in `config/settings.py`:
 ## 🔍 Troubleshooting
 
 ### Common Issues
-- **Missing API Key**: Set OPENAI_API_KEY environment variable
-- **Crawling Failures**: Check URL accessibility and robots.txt
-- **Empty Results**: Verify website has extractable text content
-- **Performance Issues**: Reduce page limit or increase delay
+- **Missing API Key**: Set OPENAI_API_KEY environment variable in Replit Secrets
+- **Crawling Failures**: Check URL accessibility, robots.txt compliance, or increase delay
+- **Empty Results**: Verify website has extractable text content (not just images/videos)
+- **Performance Issues**: Reduce page limit (try 10-25 pages) or increase delay (2-3 seconds)
+- **Dependency Conflicts**: Application uses SimpleRAGEngine as fallback for maximum compatibility
 
 ### Debug Features
 - Real-time progress tracking during crawling
@@ -210,12 +215,22 @@ The application uses environment-based configuration in `config/settings.py`:
 ## 📄 License & Credits
 
 Built with:
-- **Streamlit**: Web application framework
-- **OpenAI**: GPT-4 and text embeddings
-- **ChromaDB**: Vector database for semantic search
-- **Trafilatura**: Content extraction
-- **Plotly**: Interactive visualizations
+- **Streamlit**: Web application framework and UI components
+- **OpenAI GPT-4o**: AI-powered question answering and content analysis
+- **Trafilatura**: Clean content extraction from web pages
+- **Beautiful Soup**: HTML parsing and link discovery
+- **Tiktoken**: Token counting and text chunking
+- **Optional ChromaDB**: Vector database for advanced semantic search
+- **Plotly**: Interactive visualizations and charts
 
-## 🔄 Changelog
+## 🔄 Recent Updates
 
-See `replit.md` for detailed changelog and recent improvements.
+### Current Implementation (June 2025)
+- **Dual RAG Architecture**: ChromaDB-based engine with SimpleRAGEngine fallback for compatibility
+- **Enhanced Analytics**: Complete Analytics/Search/Content tabs with interactive visualizations
+- **Improved Caching**: Human-readable cache filenames with embedded metadata
+- **Smart Crawling**: Enhanced link discovery with 30+ links per page and better URL filtering
+- **Real-time Progress**: Live crawling metrics with ETA calculations and performance tracking
+- **Dependency Resilience**: Automatic fallback to lightweight engine when advanced dependencies unavailable
+
+See `replit.md` for detailed changelog and technical architecture decisions.
