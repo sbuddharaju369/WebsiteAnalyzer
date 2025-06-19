@@ -80,10 +80,10 @@ To start recursive crawling:
 5. The system will automatically find and process all accessible pages within the domain
 
 ### AI-Powered Analysis
-- **Dual RAG Implementation**: ChromaDB-based engine for advanced features, SimpleRAGEngine for lightweight deployment
-- **Semantic Search**: Keyword-based relevance scoring with similarity matching
-- **Smart Chunking**: Token-aware content segmentation with 100-token overlap for better context
-- **Content Caching**: Local JSON storage with embedded metadata for fast repeated analysis
+- **ChromaDB Vector Database**: Advanced semantic search with persistent embedding storage
+- **OpenAI Embeddings**: True vector similarity search for enhanced content matching
+- **Smart Chunking**: Token-aware content segmentation with 100-token overlap for optimal context
+- **Embedding Caching**: Reuse OpenAI embeddings between sessions for performance optimization
 
 ### User Interface
 - **Collapsible Sidebar**: Organized navigation with drawer system
@@ -92,10 +92,10 @@ To start recursive crawling:
 - **Configurable Verbosity**: Concise, balanced, or comprehensive answers
 
 ### Data Management
-- **Flexible Storage**: ChromaDB support with fallback to in-memory storage for compatibility
-- **Cache Management**: Human-readable filenames with domain, date, time, and page count
-- **Coverage Analysis**: Website size estimation using sitemap discovery and link analysis
-- **Source Attribution**: Confidence scoring based on content relevance and similarity matching
+- **Persistent Vector Storage**: ChromaDB database for embeddings with local cache backup
+- **Cache Management**: Human-readable filenames with embedded OpenAI embeddings for instant reload
+- **Coverage Analysis**: Website size estimation using comprehensive sitemap analysis
+- **Source Attribution**: Vector similarity confidence scoring with relevance ranking
 
 ## 🛠️ Installation & Setup
 
@@ -158,24 +158,24 @@ The application uses environment-based configuration in `config/settings.py`:
 - Provides intelligent link discovery with domain scoping
 - Manages cache file generation with human-readable naming
 
-**SimpleRAGEngine** (`simple_rag_engine.py`)
-- Lightweight in-memory RAG implementation for maximum compatibility
-- Implements smart text chunking with semantic boundary awareness
-- Provides keyword-based search with relevance scoring
-- Optimized for environments with dependency constraints
+**WebRAGEngine** (`web_rag_engine.py`)
+- Production ChromaDB-based RAG implementation with vector embeddings
+- OpenAI text-embedding-ada-002 for semantic similarity search
+- Persistent vector storage with metadata and confidence scoring
+- Advanced chunking with token-aware semantic boundary detection
 
-**Alternative: WebRAGEngine** (`web_rag_engine.py`)
-- Advanced ChromaDB-based implementation for enhanced semantic search
-- Supports vector embeddings with persistent storage
-- Provides more sophisticated similarity matching
-- Requires additional system dependencies
+**Alternative: SimpleRAGEngine** (`simple_rag_engine.py`)
+- Lightweight fallback implementation for environments with dependency constraints
+- Keyword-based search with relevance scoring when ChromaDB unavailable
+- In-memory storage for development and testing scenarios
 
 ### Data Flow
 1. **Crawling**: Extract clean content from website pages using Trafilatura
-2. **Processing**: Intelligently chunk text with 1000-token segments and 100-token overlap
-3. **Storage**: Save to local JSON cache with metadata and optional ChromaDB vector storage
-4. **Analysis**: Use RAG engine for AI-powered question answering with GPT-4o
-5. **Visualization**: Display results through interactive analytics tabs and charts
+2. **Processing**: Intelligently chunk text with 600-token segments and 100-token overlap
+3. **Embedding**: Generate OpenAI embeddings for each chunk with caching
+4. **Storage**: Save to ChromaDB vector database plus local JSON cache with embeddings
+5. **Analysis**: Use vector similarity search for AI-powered question answering with GPT-4o
+6. **Visualization**: Display results through interactive analytics tabs and network graphs
 
 ### Configuration Management
 - Centralized settings in `config/settings.py`
@@ -186,9 +186,9 @@ The application uses environment-based configuration in `config/settings.py`:
 ## 🚦 Performance Considerations
 
 ### Optimization Features
-- **Content Caching**: Reuse processed content and metadata between sessions
+- **Embedding Caching**: Reuse expensive OpenAI embeddings between sessions
 - **Smart Chunking**: Token-aware content segmentation with semantic boundary respect
-- **Efficient Search**: Keyword-based relevance scoring for fast content lookup
+- **Vector Search**: ChromaDB similarity search for fast and accurate content retrieval
 - **Progressive Loading**: Real-time progress tracking with live metrics and ETAs
 
 ### Resource Management
@@ -204,7 +204,7 @@ The application uses environment-based configuration in `config/settings.py`:
 - **Crawling Failures**: Check URL accessibility, robots.txt compliance, or increase delay
 - **Empty Results**: Verify website has extractable text content (not just images/videos)
 - **Performance Issues**: Reduce page limit (try 10-25 pages) or increase delay (2-3 seconds)
-- **Dependency Conflicts**: Application uses SimpleRAGEngine as fallback for maximum compatibility
+- **ChromaDB Issues**: Ensure proper numpy and system dependencies for vector database functionality
 
 ### Debug Features
 - Real-time progress tracking during crawling
@@ -226,11 +226,11 @@ Built with:
 ## 🔄 Recent Updates
 
 ### Current Implementation (June 2025)
-- **Dual RAG Architecture**: ChromaDB-based engine with SimpleRAGEngine fallback for compatibility
-- **Enhanced Analytics**: Complete Analytics/Search/Content tabs with interactive visualizations
-- **Improved Caching**: Human-readable cache filenames with embedded metadata
-- **Smart Crawling**: Enhanced link discovery with 30+ links per page and better URL filtering
-- **Real-time Progress**: Live crawling metrics with ETA calculations and performance tracking
-- **Dependency Resilience**: Automatic fallback to lightweight engine when advanced dependencies unavailable
+- **Production ChromaDB**: Vector database with OpenAI embeddings for semantic search
+- **Enhanced Analytics**: Complete Analytics/Search/Content tabs with network visualizations
+- **Embedding Persistence**: Cache files include OpenAI embeddings for instant reload
+- **Smart Crawling**: Enhanced link discovery with comprehensive sitemap analysis
+- **Real-time Progress**: Live crawling metrics with ETA calculations and performance charts
+- **Advanced RAG**: Context-aware chunking with confidence scoring and source attribution
 
 See `replit.md` for detailed changelog and technical architecture decisions.
