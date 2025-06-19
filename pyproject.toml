@@ -23,9 +23,7 @@ dependencies = [
     "scrapy>=2.13.2",
     "selenium>=4.33.0",
     "readability-lxml>=0.8.4.1",
-    "langchain-community>=0.3.25",
     "plotly>=6.1.2",
-    "numpy>=2.3.0",
     "pandas>=2.3.0",
     "chromadb>=1.0.13",
 ]
