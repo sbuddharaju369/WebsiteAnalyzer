@@ -358,29 +358,46 @@ class SimpleRAGEngine:
         if not self.chunks:
             return []
         
-        # Simple keyword-based relevance scoring
+        # Enhanced keyword-based relevance scoring
         query_words = set(query.lower().split())
         scored_chunks = []
         
         for i, chunk in enumerate(self.chunks):
             chunk_words = set(chunk.lower().split())
-            # Calculate relevance score based on word overlap
-            overlap = len(query_words.intersection(chunk_words))
-            total_words = len(query_words.union(chunk_words))
-            relevance = overlap / total_words if total_words > 0 else 0
+            chunk_lower = chunk.lower()
             
-            # Boost score if query terms appear close together
+            # Calculate relevance score based on multiple factors
+            overlap = len(query_words.intersection(chunk_words))
+            total_query_words = len(query_words)
+            
+            # Base relevance from word overlap
+            relevance = overlap / total_query_words if total_query_words > 0 else 0
+            
+            # Boost for exact phrase matches
+            query_text = query.lower()
+            if query_text in chunk_lower:
+                relevance += 0.5
+            
+            # Boost for individual word frequency in chunk
+            for word in query_words:
+                if word in chunk_lower:
+                    word_count = chunk_lower.count(word)
+                    relevance += word_count * 0.1
+            
+            # Boost for terms appearing close together
+            if overlap > 1:
+                relevance += 0.2
+            
+            # Ensure minimum relevance for any matching content
             if overlap > 0:
-                chunk_lower = chunk.lower()
-                for word in query_words:
-                    if word in chunk_lower:
-                        relevance += 0.1
+                relevance = max(relevance, 0.3)
             
             if relevance > 0:
                 scored_chunks.append({
                     'chunk': chunk,
                     'metadata': self.chunk_metadata[i],
-                    'relevance': relevance
+                    'relevance': min(relevance, 1.0),  # Cap at 1.0
+                    'similarity': min(relevance, 1.0)  # Add similarity for compatibility
                 })
         
         # Sort by relevance and return top k
@@ -411,7 +428,8 @@ class SimpleRAGEngine:
                 sources.append({
                     'title': metadata['title'],
                     'url': metadata['url'],
-                    'relevance': f"{item['relevance']:.2f}"
+                    'relevance': f"{item['relevance']:.2f}",
+                    'confidence': item['relevance']  # Add confidence for display
                 })
         
         context = "\n\n---\n\n".join(context_parts)
@@ -443,9 +461,16 @@ class SimpleRAGEngine:
             # Calculate confidence based on relevance of sources
             if relevant_chunks:
                 avg_relevance = sum(item['relevance'] for item in relevant_chunks) / len(relevant_chunks)
-                confidence = min(avg_relevance * 2, 1.0)  # Scale to 0-1
+                # More conservative confidence calculation
+                confidence = min(avg_relevance * 1.2, 0.9)  # Scale to 0-0.9 max
+                
+                # Reduce confidence if answer indicates uncertainty
+                answer_text = response.choices[0].message.content
+                if answer_text and any(phrase in answer_text.lower() for phrase in 
+                       ["does not explicitly mention", "not specified", "unclear", "cannot determine"]):
+                    confidence *= 0.5
             else:
-                confidence = 0.5  # Medium confidence for fallback
+                confidence = 0.3  # Lower confidence for fallback
             
             return {
                 "answer": response.choices[0].message.content,
@@ -1226,8 +1251,9 @@ Generate only the title, no explanations or quotes."""
                 height=80,
                 label_visibility="collapsed"
             )
-            # Clear the current_question after displaying it
+            # Store the question value for submit processing
             if st.session_state.current_question:
+                question = st.session_state.current_question
                 st.session_state.current_question = ""
         with col2:
             st.markdown("**Answer Style:**")
@@ -1251,7 +1277,7 @@ Generate only the title, no explanations or quotes."""
         with submit_col1:
             submit_button = st.button("🔍 Ask", type="primary", use_container_width=True)
         
-        if question and st.session_state.rag_engine and submit_button:
+        if submit_button and question and st.session_state.rag_engine:
             try:
                 with st.spinner("🤔 Analyzing content..."):
                     result = st.session_state.rag_engine.analyze_content(question, verbosity=verbosity)
@@ -1305,9 +1331,18 @@ Generate only the title, no explanations or quotes."""
                         st.markdown("### 📚 Sources")
                         for i, source in enumerate(result['sources'][:5], 1):
                             source_confidence = source.get('confidence', 0)
+                            # Handle both numeric and string relevance values
+                            if isinstance(source.get('relevance'), str):
+                                try:
+                                    source_confidence = float(source['relevance'])
+                                except:
+                                    source_confidence = 0.3
+                            elif 'relevance' in source:
+                                source_confidence = source['relevance']
+                            
                             if source_confidence >= 0.7:
                                 confidence_indicator = "🟢"
-                            elif source_confidence >= 0.5:
+                            elif source_confidence >= 0.4:
                                 confidence_indicator = "🟡"
                             else:
                                 confidence_indicator = "🟠"
@@ -1336,7 +1371,7 @@ Generate only the title, no explanations or quotes."""
                     
             except Exception as e:
                 st.error(f"Error processing question: {str(e)}")
-        else:
+        elif submit_button:
             if not question:
                 st.info("💡 Enter a question above or click on a suggested question to get started!")
             elif not st.session_state.rag_engine:
