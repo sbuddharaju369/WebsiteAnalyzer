@@ -134,6 +134,9 @@ The application follows a modular architecture with clear separation of concerns
 
 ### Full Application Restoration (June 19, 2025)
 - **Complete Feature Restoration**: Fully restored all sophisticated features that were working before the dependency issues, including real-time progress tracking with ETA calculations, performance charts during crawling, detailed AI analysis progress with 4-step breakdown, complete Analytics/Search/Content tabs with visualizations, and website coverage estimation
+- **Crawler Improvements**: Enhanced link discovery logic to find more pages (30 links per page), improved URL cleaning, and added aggregated progress tracking for total links found and queue remaining
+- **Cache Management**: Implemented human-friendly cache file naming (e.g., "verizon_jun-19-2025_3-45pm_25pages.json") with readable display formatting
+- **Context-Sensitive Questions**: Replaced generic suggested questions with AI-generated, website-specific questions based on actual crawled content using GPT-4o analysis
 - **README Enhancement**: Added comprehensive documentation explaining the recursive web crawling process, domain scoping strategy, and content processing pipeline to help users understand how the system discovers and processes website content
 
 ### UI/UX Enhancements (June 15, 2025)

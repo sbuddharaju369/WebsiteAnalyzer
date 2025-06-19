@@ -120,15 +120,7 @@ class SimpleWebCrawler:
                 to_visit.extend(discovered_links[:30])
                 
                 if progress_callback:
-                    progress_callback(pages_visited, pages_extracted, url, title)
-                
-                # Show debug info in sidebar for troubleshooting
-                with st.sidebar:
-                    if discovered_links:
-                        st.write(f"✅ Found {len(discovered_links)} new links")
-                        st.write(f"📋 Queue: {len(to_visit)} URLs remaining")
-                    else:
-                        st.write("⚠️ No new links found on this page")
+                    progress_callback(pages_visited, pages_extracted, url, title, len(discovered_links), len(to_visit))
                 
                 time.sleep(self.delay)
                 
@@ -466,14 +458,87 @@ class SimpleRAGEngine:
             return {"answer": f"Error analyzing content: {str(e)}", "sources": [], "confidence": 0.0}
     
     def suggest_questions(self):
-        """Suggest relevant questions"""
-        return [
-            "What is this website about?",
-            "What products or services are offered?",
-            "How can I contact them?",
-            "What are the main topics covered?",
-            "What are the key features mentioned?"
-        ]
+        """Generate context-sensitive questions based on crawled content"""
+        if not self.chunks:
+            return [
+                "What are the main topics covered on this website?",
+                "What products or services are offered?",
+                "What are the key features mentioned?"
+            ]
+        
+        try:
+            # Get sample content for analysis
+            sample_content = " ".join(self.chunks[:3])[:2000]  # First 3 chunks, max 2000 chars
+            
+            # Extract domain for context
+            domain = ""
+            if self.chunk_metadata:
+                domain = self.chunk_metadata[0].get('domain', '')
+            
+            prompt = f"""Based on this website content from {domain}, generate 6 specific and relevant questions that users would want to ask about this particular website. The questions should be:
+
+1. Specific to the actual content and services/products mentioned
+2. Practical questions a visitor would have
+3. Different from each other
+4. Focused on key information available on the site
+
+Website content sample:
+{sample_content}
+
+Return only the questions, one per line, without numbering or bullet points."""
+
+            response = openai.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=300,
+                temperature=0.7
+            )
+            
+            questions = response.choices[0].message.content.strip().split('\n')
+            # Clean and filter questions
+            filtered_questions = []
+            for q in questions:
+                q = q.strip()
+                if q and len(q) > 10 and '?' in q:
+                    filtered_questions.append(q)
+            
+            return filtered_questions[:6] if filtered_questions else [
+                f"What services does {domain} offer?",
+                f"What are the key features of {domain}?",
+                f"How can I get started with {domain}?"
+            ]
+            
+        except Exception as e:
+            # Fallback to domain-specific generic questions
+            domain_lower = domain.lower() if domain else ""
+            
+            if "verizon" in domain_lower:
+                return [
+                    "What wireless plans does Verizon offer?",
+                    "What are Verizon's unlimited plan features?",
+                    "How much do Verizon plans cost?",
+                    "What devices work with Verizon?",
+                    "Does Verizon offer international plans?",
+                    "What are Verizon's prepaid options?"
+                ]
+            elif "amazon" in domain_lower:
+                return [
+                    "What products are available?",
+                    "What are the shipping options?",
+                    "What is the return policy?",
+                    "How do I track my order?",
+                    "What payment methods are accepted?",
+                    "Are there any current deals or discounts?"
+                ]
+            else:
+                return [
+                    "What are the main products or services offered?",
+                    "How can I contact customer support?",
+                    "What are the pricing options?",
+                    "What are the key features?",
+                    "How do I get started?",
+                    "What are the terms of service?"
+                ]
     
     def get_content_summary(self):
         """Get content summary"""
@@ -673,6 +738,10 @@ class WebContentAnalyzer:
             eta_placeholder = st.empty()
             performance_chart_placeholder = st.empty()
             
+            # Add aggregated tracking placeholders
+            links_found_placeholder = st.empty()
+            queue_remaining_placeholder = st.empty()
+            
             start_time = datetime.now()
             
             # Initialize performance tracking data
@@ -682,10 +751,16 @@ class WebContentAnalyzer:
                 'content_extracted': [],
                 'crawl_rate': []
             }
+            
+            # Initialize link tracking
+            total_links_found = 0
+            total_queue_remaining = 1  # Start with 1 (the initial URL)
         
         crawler = SimpleWebCrawler(max_pages=max_pages, delay=delay)
         
-        def progress_callback(visited, extracted, current_url=None, page_title=None):
+        def progress_callback(visited, extracted, current_url=None, page_title=None, new_links_count=0, queue_size=0):
+            nonlocal total_links_found, total_queue_remaining
+            
             pages_visited_placeholder.metric("📄 Pages Visited", visited)
             pages_extracted_placeholder.metric("✅ Content Extracted", extracted)
             
@@ -695,6 +770,15 @@ class WebContentAnalyzer:
             if current_url and page_title:
                 title_display = page_title[:40] + "..." if len(page_title) > 40 else page_title
                 current_page_placeholder.info(f"🔍 **Current:** {title_display}")
+            
+            # Update aggregated link tracking
+            if new_links_count > 0:
+                total_links_found += new_links_count
+            total_queue_remaining = queue_size
+            
+            # Display aggregated link information
+            links_found_placeholder.info(f"🔗 **Total Links Found:** {total_links_found}")
+            queue_remaining_placeholder.info(f"📋 **Queue Remaining:** {total_queue_remaining}")
             
             # Calculate ETA and update performance tracking
             elapsed = (datetime.now() - start_time).total_seconds()
@@ -858,22 +942,61 @@ class WebContentAnalyzer:
     
     def format_cache_name(self, filename: str) -> str:
         """Format cache filename for display"""
-        if not filename:
-            return ""
-        return filename.replace('.json', '').replace('_', ' - ')
+        if "_" in filename:
+            parts = filename.replace(".json", "").split("_")
+            if len(parts) >= 3:
+                domain = parts[0]
+                timestamp = parts[1] + "_" + parts[2] if len(parts) > 2 else parts[1]
+                pages = parts[-1] if parts[-1].endswith("pages") else "pages"
+                
+                try:
+                    # Handle new format: feb-19-2025_3-45pm
+                    if "-" in timestamp and ("am" in timestamp.lower() or "pm" in timestamp.lower()):
+                        # Parse new human-friendly format
+                        date_part, time_part = timestamp.split("_")
+                        month, day, year = date_part.split("-")
+                        
+                        # Convert month abbreviation to full name
+                        month_names = {
+                            "jan": "January", "feb": "February", "mar": "March", "apr": "April",
+                            "may": "May", "jun": "June", "jul": "July", "aug": "August",
+                            "sep": "September", "oct": "October", "nov": "November", "dec": "December"
+                        }
+                        full_month = month_names.get(month.lower(), month.capitalize())
+                        
+                        # Format time
+                        time_formatted = time_part.replace("-", ":").upper()
+                        
+                        formatted_date = f"{full_month} {day}, {year} at {time_formatted}"
+                    else:
+                        # Handle old format: 20250219_144500
+                        dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
+                        formatted_date = dt.strftime("%B %d, %Y at %I:%M %p")
+                    
+                    return f"{domain} - {formatted_date} ({pages})"
+                except:
+                    pass
+        
+        return filename
     
     def save_cache(self, content: List[Dict[str, Any]], domain: str) -> str:
-        """Save content to cache"""
+        """Save content to cache with human-friendly filename"""
         cache_dir = Path("data/cache")
         cache_dir.mkdir(parents=True, exist_ok=True)
         
-        timestamp = datetime.now()
-        filename = f"{domain}_{timestamp.strftime('%Y%m%d_%H%M%S')}_{len(content)}pages.json"
+        # Create human-friendly timestamp
+        now = datetime.now()
+        timestamp = now.strftime("%b-%d-%Y_%I-%M%p").lower()
+        
+        # Clean domain name for filename
+        clean_domain = domain.replace("www.", "").replace(".com", "").replace(".org", "").replace(".net", "")
+        
+        filename = f"{clean_domain}_{timestamp}_{len(content)}pages.json"
         filepath = cache_dir / filename
         
         cache_data = {
             'domain': domain,
-            'timestamp': timestamp.isoformat(),
+            'timestamp': now.isoformat(),
             'total_pages': len(content),
             'content': content
         }
