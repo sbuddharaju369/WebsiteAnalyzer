@@ -137,6 +137,7 @@ The application follows a modular architecture with clear separation of concerns
 - **Crawler Improvements**: Enhanced link discovery logic to find more pages (30 links per page), improved URL cleaning, and added aggregated progress tracking for total links found and queue remaining
 - **Cache Management**: Implemented human-friendly cache file naming (e.g., "verizon_jun-19-2025_3-45pm_25pages.json") with readable display formatting
 - **Context-Sensitive Questions**: Replaced generic suggested questions with AI-generated, website-specific questions based on actual crawled content using GPT-4o analysis
+- **Enhanced User Interface**: Added intelligent page title generation, submit button for questions, and comprehensive reliability scoring with detailed explanations and improvement tips
 - **README Enhancement**: Added comprehensive documentation explaining the recursive web crawling process, domain scoping strategy, and content processing pipeline to help users understand how the system discovers and processes website content
 
 ### UI/UX Enhancements (June 15, 2025)

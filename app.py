@@ -449,7 +449,7 @@ class SimpleRAGEngine:
             
             return {
                 "answer": response.choices[0].message.content,
-                "sources": sources if relevant_chunks else [{"title": meta["title"], "url": meta["url"]} for meta in self.chunk_metadata[:3]],
+                "sources": sources if relevant_chunks else [{"title": meta["title"], "url": meta["url"], "confidence": 0.3} for meta in self.chunk_metadata[:3]],
                 "confidence": confidence,
                 "chunks_used": len(relevant_chunks) if relevant_chunks else 3
             }
@@ -851,11 +851,9 @@ class WebContentAnalyzer:
         
         content = crawler.crawl_website(url, progress_callback=progress_callback)
         
-        # Extract page title from the first page for display
+        # Generate intelligent page title from content
         if content and len(content) > 0:
-            # Try to find a page with "Home" or "Main" in title, or use the first page
-            home_page = next((page for page in content if any(term in page.get('title', '').lower() for term in ['home', 'main', 'index'])), content[0])
-            st.session_state.current_page_title = home_page.get('title', domain)
+            st.session_state.current_page_title = self.generate_page_title(content, domain)
         else:
             st.session_state.current_page_title = domain
         
@@ -945,6 +943,67 @@ class WebContentAnalyzer:
         
         st.session_state.crawl_in_progress = False
     
+    def generate_page_title(self, content: List[Dict[str, Any]], domain: str) -> str:
+        """Generate intelligent page title based on content analysis"""
+        if not content:
+            return domain
+            
+        try:
+            # Collect sample text from multiple pages
+            sample_texts = []
+            for page in content[:5]:  # Use first 5 pages
+                page_content = page.get('content', '')
+                if page_content:
+                    # Take first 200 chars from each page
+                    sample_texts.append(page_content[:200])
+            
+            if not sample_texts:
+                return domain
+                
+            combined_text = " ".join(sample_texts)[:1000]  # Limit to 1000 chars
+            
+            prompt = f"""Based on this website content, generate a concise, descriptive title (2-4 words max) that captures what this website is about. The title should be suitable for "Ask Questions about [Title]".
+
+Website domain: {domain}
+Content sample: {combined_text}
+
+Examples of good titles:
+- "Verizon Wireless Plans"
+- "Amazon Shopping"
+- "Netflix Streaming"
+- "Apple Products"
+
+Generate only the title, no explanations or quotes."""
+
+            response = openai.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=20,
+                temperature=0.3
+            )
+            
+            generated_title = response.choices[0].message.content.strip().strip('"\'')
+            
+            # Validate the title (should be reasonable length and not contain weird characters)
+            if generated_title and len(generated_title) <= 50 and not any(char in generated_title for char in ['<', '>', '{', '}', '[', ']']):
+                return generated_title
+            else:
+                return domain
+                
+        except Exception as e:
+            # Fallback to domain-based title
+            domain_clean = domain.replace("www.", "").replace(".com", "").replace(".org", "").replace(".net", "")
+            if "verizon" in domain_clean.lower():
+                return "Verizon Services"
+            elif "amazon" in domain_clean.lower():
+                return "Amazon"
+            elif "apple" in domain_clean.lower():
+                return "Apple"
+            elif "google" in domain_clean.lower():
+                return "Google Services"
+            else:
+                return domain_clean.title()
+
     def get_cache_files(self) -> List[str]:
         """Get list of cache files"""
         cache_dir = Path("data/cache")
@@ -1178,54 +1237,110 @@ class WebContentAnalyzer:
                 index=['concise', 'balanced', 'comprehensive'].index(st.session_state.answer_verbosity),
                 format_func=lambda x: {
                     'concise': '🎯 Concise',
-                    'balanced': '⚖️ Balanced', 
-                    'comprehensive': '📖 Detailed'
+                    'balanced': '📊 Balanced', 
+                    'comprehensive': '📚 Comprehensive'
                 }[x],
-                help="Choose how detailed you want the answers to be",
                 label_visibility="collapsed"
             )
             
             if verbosity != st.session_state.answer_verbosity:
                 st.session_state.answer_verbosity = verbosity
         
-        if hasattr(st.session_state, 'current_question'):
-            question = st.session_state.current_question
-            delattr(st.session_state, 'current_question')
+        # Submit button for processing questions
+        submit_col1, submit_col2 = st.columns([1, 4])
+        with submit_col1:
+            submit_button = st.button("🔍 Ask", type="primary", use_container_width=True)
         
-        if question and st.session_state.rag_engine:
-            with st.spinner("Analyzing content..."):
-                result = st.session_state.rag_engine.analyze_content(question, verbosity=verbosity)
+        if question and st.session_state.rag_engine and submit_button:
+            try:
+                with st.spinner("🤔 Analyzing content..."):
+                    result = st.session_state.rag_engine.analyze_content(question, verbosity=verbosity)
                 
-                verbosity_indicators = {
-                    'concise': '🎯 Concise',
-                    'balanced': '⚖️ Balanced',
-                    'comprehensive': '📖 Detailed'
-                }
-                
-                st.markdown(f"### Answer ({verbosity_indicators[verbosity]})")
-                st.markdown(result['answer'])
-                
-                # Display confidence and sources
-                col1, col2 = st.columns([2, 1])
-                
-                with col1:
-                    if 'sources' in result and result['sources']:
-                        with st.expander("📚 Sources"):
-                            for source in result['sources']:
-                                relevance_text = f" (Relevance: {source.get('relevance', 'N/A')})" if 'relevance' in source else ""
-                                st.markdown(f"- **{source['title']}**{relevance_text}")
-                                st.markdown(f"  {source['url']}")
-                
-                with col2:
-                    if 'confidence' in result:
-                        confidence = result['confidence']
-                        if confidence >= 0.8:
-                            confidence_text = "Very Reliable"
-                            confidence_color = "green"
-                        elif confidence >= 0.6:
-                            confidence_text = "Mostly Reliable"  
-                            confidence_color = "orange"
-                        elif confidence >= 0.4:
+                if result.get('answer'):
+                    st.markdown("### 💬 Answer")
+                    st.markdown(result['answer'])
+                    
+                    # Enhanced reliability display
+                    confidence = result.get('confidence', 0)
+                    
+                    # Convert confidence to reliability indicator
+                    if confidence >= 0.8:
+                        reliability_text = "Very Reliable"
+                        reliability_color = "green"
+                        reliability_icon = "🟢"
+                    elif confidence >= 0.6:
+                        reliability_text = "Mostly Reliable"
+                        reliability_color = "lightgreen"
+                        reliability_icon = "🟡"
+                    elif confidence >= 0.4:
+                        reliability_text = "Moderately Reliable"
+                        reliability_color = "orange"
+                        reliability_icon = "🟠"
+                    else:
+                        reliability_text = "Low Reliability"
+                        reliability_color = "red"
+                        reliability_icon = "🔴"
+                    
+                    st.markdown(f"### {reliability_icon} Reliability: {reliability_text} ({confidence:.0%})")
+                    
+                    # Reliability explanation
+                    with st.expander("ℹ️ What does this reliability score mean?"):
+                        st.markdown(f"""
+                        **Reliability Score: {confidence:.0%}**
+                        
+                        This score indicates how confident the AI is in its answer based on:
+                        - **Source Quality**: How well the found content matches your question
+                        - **Content Clarity**: How clear and specific the source information is
+                        - **Answer Completeness**: Whether sufficient information was available
+                        
+                        **Reliability Levels:**
+                        - 🟢 **Very Reliable (80-100%)**: High confidence, comprehensive sources
+                        - 🟡 **Mostly Reliable (60-79%)**: Good confidence, adequate sources  
+                        - 🟠 **Moderately Reliable (40-59%)**: Some uncertainty, limited sources
+                        - 🔴 **Low Reliability (0-39%)**: High uncertainty, insufficient sources
+                        """)
+                    
+                    # Sources with confidence scores
+                    if result.get('sources'):
+                        st.markdown("### 📚 Sources")
+                        for i, source in enumerate(result['sources'][:5], 1):
+                            source_confidence = source.get('confidence', 0)
+                            if source_confidence >= 0.7:
+                                confidence_indicator = "🟢"
+                            elif source_confidence >= 0.5:
+                                confidence_indicator = "🟡"
+                            else:
+                                confidence_indicator = "🟠"
+                            
+                            st.markdown(f"{confidence_indicator} **{i}.** [{source['title']}]({source['url']}) *(Relevance: {source_confidence:.0%})*")
+                    
+                    # Reliability improvement tips
+                    if confidence < 0.7:
+                        with st.expander("💡 How to improve answer reliability"):
+                            st.markdown("""
+                            **To get more reliable answers:**
+                            
+                            1. **Be more specific**: Instead of "What services?" ask "What wireless plans are available?"
+                            2. **Ask targeted questions**: Focus on specific topics covered on the website
+                            3. **Try different phrasings**: Rephrase your question using different keywords
+                            4. **Check if more content is needed**: Consider crawling more pages if the website is large
+                            5. **Use exact terms**: Use terminology that appears on the website
+                            
+                            **Current issue may be:**
+                            - Limited relevant content found for your specific question
+                            - Question too broad or general for available content
+                            - Key information may be on pages not yet crawled
+                            """)
+                else:
+                    st.error("Could not generate an answer. Please try rephrasing your question.")
+                    
+            except Exception as e:
+                st.error(f"Error processing question: {str(e)}")
+        else:
+            if not question:
+                st.info("💡 Enter a question above or click on a suggested question to get started!")
+            elif not st.session_state.rag_engine:
+                st.warning("⚠️ Please crawl a website first to enable question answering.")
                             confidence_text = "Moderately Reliable"
                             confidence_color = "orange"
                         else:
