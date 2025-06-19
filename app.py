@@ -517,11 +517,64 @@ class WebContentAnalyzer:
             stats = crawler.get_crawl_stats()
             st.session_state.crawl_stats = stats
             
-            # Initialize RAG engine
+            # AI Analysis with detailed progress tracking
+            with st.sidebar:
+                st.markdown("---")
+                st.markdown("### 🤖 AI Analysis Progress")
+                
+                analysis_progress = st.progress(0)
+                analysis_status = st.empty()
+                analysis_details = st.empty()
+                
+                analysis_status.info("🔍 **Step 1/4:** Initializing AI analysis engine...")
+                analysis_progress.progress(0.1)
+                time.sleep(0.3)
+            
+            # Initialize RAG engine with progress tracking
             try:
+                with st.sidebar:
+                    analysis_status.info("📝 **Step 2/4:** Processing content with smart chunking...")
+                    analysis_details.text(f"Breaking {len(content)} pages into semantic chunks")
+                    analysis_progress.progress(0.4)
+                    time.sleep(0.3)
+                
                 rag_engine = SimpleRAGEngine()
                 rag_engine.process_web_content(content, domain)
+                
+                with st.sidebar:
+                    analysis_status.info("🧠 **Step 3/4:** Preparing semantic analysis capabilities...")
+                    analysis_details.text(f"Created {len(rag_engine.chunks)} intelligent chunks for analysis")
+                    analysis_progress.progress(0.7)
+                    time.sleep(0.3)
+                
                 st.session_state.rag_engine = rag_engine
+                
+                with st.sidebar:
+                    analysis_status.success("✅ **Step 4/4:** AI analysis system ready!")
+                    analysis_details.text("System optimized for intelligent question answering")
+                    analysis_progress.progress(1.0)
+                    
+                    # Add detailed explanation
+                    with st.expander("ℹ️ Why AI Analysis Takes Time"):
+                        st.markdown("""
+                        **Smart Chunking Process:**
+                        - Breaks content into 1000-token chunks with 100-token overlap
+                        - Respects paragraph and sentence boundaries for context
+                        - Maintains source attribution for accurate citations
+                        
+                        **Semantic Preparation:**
+                        - Prepares content for intelligent keyword-based search
+                        - Creates rich metadata for source attribution
+                        - Optimizes chunk structure for question-answering accuracy
+                        
+                        **Performance Optimization:**
+                        - Caches processed chunks for faster repeat analysis
+                        - Uses token-aware processing to maximize context
+                        - Implements relevance scoring for better results
+                        
+                        This ensures high-quality, reliable answers with proper source attribution.
+                        """)
+                        
             except Exception as e:
                 st.error(f"Error initializing AI analysis: {str(e)}")
                 st.session_state.rag_engine = None

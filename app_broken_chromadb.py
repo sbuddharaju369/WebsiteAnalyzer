@@ -447,6 +447,191 @@ class WebContentAnalyzer:
             st.error("Failed to crawl website. Please check the URL and try again.")
         
         st.session_state.crawl_in_progress = False
+    
+    def render_analytics_tabs(self):
+        """Render the analytics section with tabs"""
+        if not st.session_state.crawled_content:
+            return
+            
+        tab1, tab2, tab3 = st.tabs(["📊 Analytics", "🔍 Search", "📄 Content"])
+        
+        with tab1:
+            self.render_analytics_tab()
+        
+        with tab2:
+            self.render_search_tab()
+            
+        with tab3:
+            self.render_content_tab()
+    
+    def render_analytics_tab(self):
+        """Render the analytics tab"""
+        if not PANDAS_AVAILABLE:
+            st.info("Advanced analytics require pandas. Basic statistics available in sidebar.")
+            return
+            
+        stats = st.session_state.crawl_stats
+        if not stats:
+            return
+            
+        # Overview metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Pages", stats.get('total_pages', 0))
+        with col2:
+            st.metric("Total Words", f"{stats.get('total_words', 0):,}")
+        with col3:
+            st.metric("Avg Words/Page", f"{stats.get('average_words_per_page', 0):.0f}")
+        with col4:
+            if st.session_state.rag_engine:
+                summary = st.session_state.rag_engine.get_content_summary()
+                st.metric("Content Chunks", summary.get('total_chunks', 0))
+        
+        # Create visualizations
+        content = st.session_state.crawled_content
+        if content:
+            # Word count distribution
+            word_counts = [page.get('word_count', 0) for page in content]
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig_hist = px.histogram(
+                    x=word_counts,
+                    title="Word Count Distribution",
+                    labels={'x': 'Words per Page', 'y': 'Number of Pages'},
+                    nbins=20
+                )
+                fig_hist.update_layout(height=350)
+                st.plotly_chart(fig_hist, use_container_width=True)
+            
+            with col2:
+                # URL depth analysis
+                url_depths = []
+                for page in content:
+                    url = page.get('url', '')
+                    depth = len([p for p in url.split('/') if p]) - 2  # Subtract protocol and domain
+                    url_depths.append(max(0, depth))
+                
+                fig_depth = px.histogram(
+                    x=url_depths,
+                    title="Page Depth Distribution",
+                    labels={'x': 'URL Depth Level', 'y': 'Number of Pages'},
+                    nbins=max(1, max(url_depths) if url_depths else 1)
+                )
+                fig_depth.update_layout(height=350)
+                st.plotly_chart(fig_depth, use_container_width=True)
+            
+            # Network graph if available
+            if AGRAPH_AVAILABLE and len(content) <= 15:
+                st.subheader("Page Relationship Network")
+                self.create_network_graph(content)
+    
+    def render_search_tab(self):
+        """Render the semantic search tab"""
+        st.subheader("🔍 Semantic Search")
+        st.info("Search through website content using natural language. This finds relevant content without AI interpretation.")
+        
+        search_query = st.text_input("Search query:", placeholder="Enter keywords or phrases to find relevant content...")
+        
+        if search_query and st.session_state.rag_engine:
+            with st.spinner("Searching content..."):
+                # Use the semantic search function
+                results = st.session_state.rag_engine._semantic_search(search_query, k=10)
+                
+                if results:
+                    st.write(f"Found {len(results)} relevant results:")
+                    
+                    for i, result in enumerate(results):
+                        with st.expander(f"Result {i+1}: {result['metadata']['title']} (Relevance: {result['relevance']:.2f})"):
+                            st.write(f"**URL:** {result['metadata']['url']}")
+                            st.write(f"**Relevance Score:** {result['relevance']:.2f}")
+                            st.write("**Content Preview:**")
+                            st.write(result['chunk'][:500] + "..." if len(result['chunk']) > 500 else result['chunk'])
+                else:
+                    st.warning("No relevant content found for your search query.")
+    
+    def render_content_tab(self):
+        """Render the raw content tab"""
+        st.subheader("📄 Raw Content")
+        
+        if not st.session_state.crawled_content:
+            st.info("No content available")
+            return
+            
+        # Content selector
+        content = st.session_state.crawled_content
+        page_options = [f"{i+1}. {page.get('title', 'Untitled')[:50]}..." for i, page in enumerate(content)]
+        
+        selected_page_idx = st.selectbox("Select page to view:", range(len(page_options)), format_func=lambda x: page_options[x])
+        
+        if selected_page_idx is not None:
+            page = content[selected_page_idx]
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col2:
+                st.write("**Page Information:**")
+                st.write(f"**Title:** {page.get('title', 'N/A')}")
+                st.write(f"**URL:** {page.get('url', 'N/A')}")
+                st.write(f"**Word Count:** {page.get('word_count', 'N/A')}")
+                
+                if 'timestamp' in page:
+                    st.write(f"**Crawled:** {page['timestamp']}")
+                
+                if st.session_state.rag_engine and hasattr(st.session_state.rag_engine, 'chunks'):
+                    # Show chunks for this page
+                    page_chunks = [i for i, meta in enumerate(st.session_state.rag_engine.chunk_metadata) 
+                                 if meta['url'] == page.get('url')]
+                    st.write(f"**Content Chunks:** {len(page_chunks)}")
+            
+            with col1:
+                st.write("**Content:**")
+                content_text = page.get('content', 'No content available')
+                st.text_area("Page content:", content_text, height=400, disabled=True)
+    
+    def create_network_graph(self, content):
+        """Create a network graph of page relationships"""
+        if not AGRAPH_AVAILABLE:
+            st.info("Network visualization requires streamlit-agraph package")
+            return
+            
+        nodes = []
+        edges = []
+        
+        # Create nodes for each page
+        for i, page in enumerate(content[:10]):  # Limit to 10 nodes for clarity
+            title = page.get('title', f'Page {i+1}')
+            short_title = title[:20] + "..." if len(title) > 20 else title
+            
+            nodes.append(Node(
+                id=str(i),
+                label=short_title,
+                size=max(10, min(30, page.get('word_count', 100) / 50)),  # Size based on word count
+                color="#1f77b4"
+            ))
+        
+        # Create edges based on URL similarity (simple heuristic)
+        for i, page1 in enumerate(content[:10]):
+            for j, page2 in enumerate(content[:10]):
+                if i != j:
+                    url1_parts = set(page1.get('url', '').split('/'))
+                    url2_parts = set(page2.get('url', '').split('/'))
+                    
+                    # If URLs share significant path components, create an edge
+                    shared_parts = url1_parts.intersection(url2_parts)
+                    if len(shared_parts) > 2:  # More than just protocol and domain
+                        edges.append(Edge(source=str(i), target=str(j), type="CURVE_SMOOTH"))
+        
+        config = Config(
+            width=700,
+            height=400,
+            directed=False,
+            physics=True,
+            hierarchical=False
+        )
+        
+        agraph(nodes=nodes, edges=edges, config=config)
 
     def load_cached_content(self, filename: str):
         """Load content from cache file"""
