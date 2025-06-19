@@ -563,9 +563,12 @@ class WebContentAnalyzer:
             'crawled_content': [],
             'crawl_stats': {},
             'current_domain': None,
+            'current_page_title': None,
             'crawl_in_progress': False,
             'answer_verbosity': DEFAULT_VERBOSITY,
-            'active_drawer': None
+            'active_drawer': None,
+            'current_question': "",
+            'suggested_questions': []
         }
         
         for key, default in defaults.items():
@@ -761,8 +764,8 @@ class WebContentAnalyzer:
         def progress_callback(visited, extracted, current_url=None, page_title=None, new_links_count=0, queue_size=0):
             nonlocal total_links_found, total_queue_remaining
             
-            pages_visited_placeholder.metric("📄 Pages Visited", visited)
-            pages_extracted_placeholder.metric("✅ Content Extracted", extracted)
+            pages_visited_placeholder.info(f"📄 **Pages Visited:** {visited}")
+            pages_extracted_placeholder.info(f"✅ **Content Extracted:** {extracted}")
             
             progress = min(visited / max_pages, 1.0)
             progress_bar_placeholder.progress(progress, text=f"{progress:.0%} Complete")
@@ -848,6 +851,14 @@ class WebContentAnalyzer:
         
         content = crawler.crawl_website(url, progress_callback=progress_callback)
         
+        # Extract page title from the first page for display
+        if content and len(content) > 0:
+            # Try to find a page with "Home" or "Main" in title, or use the first page
+            home_page = next((page for page in content if any(term in page.get('title', '').lower() for term in ['home', 'main', 'index'])), content[0])
+            st.session_state.current_page_title = home_page.get('title', domain)
+        else:
+            st.session_state.current_page_title = domain
+        
         with st.sidebar:
             st.markdown("---")
             if content:
@@ -891,6 +902,8 @@ class WebContentAnalyzer:
                     time.sleep(0.3)
                 
                 st.session_state.rag_engine = rag_engine
+                # Clear previous suggested questions to generate new ones
+                st.session_state.suggested_questions = []
                 
                 with st.sidebar:
                     analysis_status.success("✅ **Step 4/4:** AI analysis system ready!")
@@ -1128,28 +1141,35 @@ class WebContentAnalyzer:
                 margin: 0;
                 text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
             ">
-                💬 Ask Questions about {st.session_state.current_domain}
+                💬 Ask Questions about {st.session_state.current_page_title or st.session_state.current_domain}
             </h2>
         </div>
         """, unsafe_allow_html=True)
         
         if st.session_state.rag_engine:
-            suggested_questions = st.session_state.rag_engine.suggest_questions()
+            # Generate suggested questions only once per content
+            if not st.session_state.suggested_questions:
+                st.session_state.suggested_questions = st.session_state.rag_engine.suggest_questions()
             
             with st.expander("💡 Suggested Questions"):
-                for question in suggested_questions:
-                    if st.button(f"❓ {question}", key=f"suggested_{hash(question)}"):
+                for i, question in enumerate(st.session_state.suggested_questions):
+                    if st.button(f"❓ {question}", key=f"suggested_{i}"):
                         st.session_state.current_question = question
+                        st.rerun()
         
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("**Your question:**")
             question = st.text_area(
                 "Your question:",
+                value=st.session_state.current_question,
                 placeholder="Ask anything about the website content...",
                 height=80,
                 label_visibility="collapsed"
             )
+            # Clear the current_question after displaying it
+            if st.session_state.current_question:
+                st.session_state.current_question = ""
         with col2:
             st.markdown("**Answer Style:**")
             verbosity = st.selectbox(
