@@ -204,8 +204,8 @@ class WebContentAnalyzer:
             
             # AI Analysis
             with st.spinner("Processing content for AI analysis..."):
-                rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
-                rag_engine.process_web_content(content, domain, use_cached_embeddings=False)
+                rag_engine = SimpleRAGEngine()
+                rag_engine.process_web_content(content, domain)
                 st.session_state.rag_engine = rag_engine
             
             with st.spinner("Saving to cache..."):
@@ -317,8 +317,8 @@ class WebContentAnalyzer:
                         
                         st.session_state.crawl_stats = stats
                     
-                    rag_engine = WebRAGEngine(collection_name=f"web_{domain.replace('.', '_')}")
-                    rag_engine.process_web_content(content, domain, use_cached_embeddings=True)
+                    rag_engine = SimpleRAGEngine()
+                    rag_engine.process_web_content(content, domain)
                     st.session_state.rag_engine = rag_engine
                     
                     st.success(f"Loaded {len(content)} pages from cache!")

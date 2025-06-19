@@ -123,7 +123,7 @@ class SimpleRAGEngine:
                     self.chunk_metadata.append({
                         'title': page.get('title', 'Untitled'),
                         'url': page.get('url', ''),
-                        'domain': domain or 'unknown',
+                        'domain': domain if domain else 'unknown',
                         'chunk_index': chunk_idx,
                         'page_index': page_idx,
                         'chunk_id': chunk_id
@@ -175,15 +175,20 @@ class SimpleRAGEngine:
         # Find most relevant chunks using semantic search
         relevant_chunks = self._semantic_search(question, k=5)
         
+        sources = []
         if not relevant_chunks:
             # Fallback to first few chunks if no relevant ones found
             context_parts = []
             for i, chunk in enumerate(self.chunks[:3]):
                 metadata = self.chunk_metadata[i]
                 context_parts.append(f"Source: {metadata['title']}\nContent: {chunk[:800]}...")
+                sources.append({
+                    'title': metadata['title'],
+                    'url': metadata['url'],
+                    'relevance': '0.50'
+                })
         else:
             context_parts = []
-            sources = []
             for item in relevant_chunks:
                 chunk = item['chunk']
                 metadata = item['metadata']
@@ -229,7 +234,7 @@ class SimpleRAGEngine:
             
             return {
                 "answer": response.choices[0].message.content,
-                "sources": sources if relevant_chunks else [{"title": meta["title"], "url": meta["url"]} for meta in self.chunk_metadata[:3]],
+                "sources": sources,
                 "confidence": confidence,
                 "chunks_used": len(relevant_chunks) if relevant_chunks else 3
             }
