@@ -1341,16 +1341,6 @@ Generate only the title, no explanations or quotes."""
                 st.info("💡 Enter a question above or click on a suggested question to get started!")
             elif not st.session_state.rag_engine:
                 st.warning("⚠️ Please crawl a website first to enable question answering.")
-                            confidence_text = "Moderately Reliable"
-                            confidence_color = "orange"
-                        else:
-                            confidence_text = "Limited Reliability"
-                            confidence_color = "red"
-                        
-                        st.markdown(f"**Confidence:** :{confidence_color}[{confidence_text}]")
-                        
-                        if 'chunks_used' in result:
-                            st.markdown(f"**Chunks analyzed:** {result['chunks_used']}")
         
         # Add comprehensive analytics section
         st.markdown("---")
